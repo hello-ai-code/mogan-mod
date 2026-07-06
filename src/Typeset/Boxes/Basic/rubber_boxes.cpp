@@ -13,6 +13,8 @@
  ******************************************************************************/
 
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 
 /*****************************************************************************/
 // Bracket types from  ../math-mode/math-macros.hpp
@@ -42,8 +44,12 @@ struct empty_box_rep : public box_rep {
     y2            = y2b;
   }
   operator tree () { return "empty"; }
-  void display (renderer ren) { (void) ren; }
+  void accept (BoxVisitor& v);
 };
+
+void
+empty_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 struct dummy_box_rep : public box_rep {
   dummy_box_rep (path ip, int x1b, int y1b, int x2b, int y2b) : box_rep (ip) {
@@ -54,13 +60,17 @@ struct dummy_box_rep : public box_rep {
     y2            = y2b;
   }
   operator tree () { return "dummy"; }
-  void display (renderer ren) { (void) ren; }
   path find_box_path (SI x, SI y, SI delta, bool force, bool& found) {
     bool dummy;
     found= false;
     return box_rep::find_box_path (x, y, delta, force, dummy);
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+dummy_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 struct marker_box_rep : public box_rep {
   int pos;
@@ -75,7 +85,6 @@ struct marker_box_rep : public box_rep {
     y2            = y2b;
   }
   operator tree () { return "marker"; }
-  void display (renderer ren) { (void) ren; }
   path find_box_path (SI x, SI y, SI delta, bool force, bool& found) {
     (void) x;
     (void) y;
@@ -114,7 +123,12 @@ struct marker_box_rep : public box_rep {
   void get_bracket_extents (SI& lo, SI& hi) {
     ref->get_bracket_extents (lo, hi);
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+marker_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /*****************************************************************************/
 // Brackets
@@ -126,8 +140,12 @@ struct bracket_box_rep : public box_rep {
 
   bracket_box_rep (path ip, int br_type2, pencil pen, SI y1b, SI y2b);
   operator tree () { return "bracket"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+bracket_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 SI
 bracket_width (int br_type, SI height, SI penw) {
@@ -242,8 +260,9 @@ draw_bracket (renderer ren, int br_type, SI x, SI y, SI w, SI h, pencil pen) {
 }
 
 void
-bracket_box_rep::display (renderer ren) {
-  draw_bracket (ren, br_type, 0, y1, x2, y2 - y1, pen);
+RenderVisitor::visit (bracket_box_rep& box) {
+  renderer ren= this->ren;
+  draw_bracket (ren, box.br_type, 0, box.y1, box.x2, box.y2 - box.y1, box.pen);
 }
 
 /*****************************************************************************/

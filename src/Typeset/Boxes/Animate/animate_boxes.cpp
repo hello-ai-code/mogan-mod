@@ -9,6 +9,8 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "Files/image_files.hpp"
@@ -40,7 +42,12 @@ struct anim_box_rep : public box_rep {
     (void) ren;
     animated_flag= true;
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+anim_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 struct composite_anim_box_rep : public composite_box_rep {
   player pl;
@@ -59,7 +66,12 @@ struct composite_anim_box_rep : public composite_box_rep {
     (void) ren;
     animated_flag= true;
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+composite_anim_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Animations which remain constant for a fixed duration
@@ -100,7 +112,6 @@ public:
     (void) i;
     return bs[current];
   }
-  void display (renderer ren) { (void) ren; }
   operator tree () { return tree ("composed animation"); }
   tree message (tree t, SI x, SI y, rectangles& rs);
   void loci (SI x, SI y, SI delta, list<string>& ids, rectangles& rs);
@@ -119,7 +130,12 @@ public:
   cursor        find_cursor (path bp);
   selection     find_selection (path lbp, path rbp);
   gr_selections graphical_select (SI x, SI y, SI dist);
+  void accept (BoxVisitor& v);
 };
+
+void
+anim_compose_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Composition of animations / basic routines
@@ -291,7 +307,12 @@ struct anim_repeat_box_rep : public composite_anim_box_rep {
   double     anim_next ();
   rectangles anim_invalid ();
   void       pre_display (renderer& ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+anim_repeat_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 anim_repeat_box_rep::anim_repeat_box_rep (path ip, box b, player pl)
     : composite_anim_box_rep (ip, pl, b->anim_duration ()), current_it (0.0),
@@ -360,7 +381,12 @@ struct anim_effect_box_rep : public composite_anim_box_rep {
   void         post_display (renderer& ren);
   virtual void set_position (double t)               = 0;
   virtual void set_clipping (renderer& ren, double t)= 0;
+  void accept (BoxVisitor& v);
 };
+
+void
+anim_effect_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 anim_effect_box_rep::anim_effect_box_rep (path ip, box b2, player pl, int len)
     : composite_anim_box_rep (ip, pl, (double) len), b (b2), current_x (0.0),
@@ -461,7 +487,6 @@ struct sound_box_rep : public anim_box_rep {
     y2= h;
   }
   operator tree () { return tree (TUPLE, "sound", as_tree (u)); }
-  void display (renderer ren) { (void) ren; }
 
   void play_sound () {
     if (exists_in_path ("play")) system ("play", u, "&");
@@ -487,7 +512,12 @@ struct sound_box_rep : public anim_box_rep {
       rs << rectangle (min (x1, x3), min (y1, y3), max (x2, x4), max (y2, y4));
     return rs;
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+sound_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Animated gifs

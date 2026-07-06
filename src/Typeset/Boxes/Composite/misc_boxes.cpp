@@ -9,9 +9,11 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "colors.hpp"
 
 /******************************************************************************
@@ -31,7 +33,12 @@ struct scatter_box_rep : composite_box_rep {
   selection find_selection (path lbp, path rbp);
   void      pre_display (renderer& ren);
   void      display_background (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+scatter_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 scatter_box_rep::scatter_box_rep (path ip2, array<box> bs, array<SI> x,
                                   array<SI> y, bool f)
@@ -135,13 +142,17 @@ struct page_box_rep : composite_box_rep {
   void redraw_background (renderer ren);
   void pre_display (renderer& ren);
   void post_display (renderer& ren);
-  void display (renderer ren);
   void clear_incomplete (rectangles& rs, SI pixel, int i, int i1, int i2);
   void collect_page_numbers (hashmap<string, tree>& h, tree page);
   void collect_page_colors (array<brush>& bs, array<rectangle>& rs);
   path find_left_box_path ();
   path find_right_box_path ();
+  void accept (BoxVisitor& v);
 };
+
+void
+page_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 page_box_rep::page_box_rep (path ip2, tree p2, int nr2, brush bgc, SI w, SI h,
                             array<box> bs, array<SI> x, array<SI> y, box dec)
@@ -217,10 +228,11 @@ page_box_rep::post_display (renderer& ren) {
 }
 
 void
-page_box_rep::display (renderer ren) {
-  if (!is_nil (decoration)) {
+RenderVisitor::visit (page_box_rep& box) {
+  renderer ren= this->ren;
+  if (!is_nil (box.decoration)) {
     rectangles rs;
-    decoration->redraw (ren, path (), rs);
+    box.decoration->redraw (ren, path (), rs);
   }
 }
 
@@ -283,7 +295,12 @@ struct page_border_box_rep : change_box_rep {
   operator tree ();
   void pre_display (renderer& ren);
   void display_background (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+page_border_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 page_border_box_rep::page_border_box_rep (path ip2, box pb, color tmb2, SI l2,
                                           SI r2, SI b2, SI t2, SI pixel2)
@@ -366,7 +383,12 @@ struct crop_marks_box_rep : change_box_rep {
   operator tree ();
   void pre_display (renderer& ren);
   void display_background (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+crop_marks_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 crop_marks_box_rep::crop_marks_box_rep (path ip2, box pb, SI w2, SI h2, SI lw2,
                                         SI ll2)

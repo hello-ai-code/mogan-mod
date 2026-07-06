@@ -10,6 +10,8 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "analyze.hpp"
@@ -32,7 +34,6 @@ public:
     (void) i;
     return bs[current];
   }
-  void display (renderer ren) { (void) ren; }
   operator tree ();
 
   bool satisfies (tree t, tree cond);
@@ -54,7 +55,12 @@ public:
   cursor        find_cursor (path bp);
   selection     find_selection (path lbp, path rbp);
   gr_selections graphical_select (SI x, SI y, SI dist);
+  void accept (BoxVisitor& v);
 };
+
+void
+case_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Basic routines for case boxes

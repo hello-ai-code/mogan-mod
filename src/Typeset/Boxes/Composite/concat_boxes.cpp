@@ -9,6 +9,8 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "colors.hpp"
@@ -69,7 +71,12 @@ struct concat_box_rep : public composite_box_rep {
   box           transform (frame fr);
   gr_selections graphical_select (SI x, SI y, SI dist);
   gr_selections graphical_select (SI x1, SI y1, SI x2, SI y2);
+  void accept (BoxVisitor& v);
 };
+
+void
+concat_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 concat_box_rep::operator tree () {
   int  i, n= N (bs);
@@ -809,8 +816,12 @@ public:
   ~phrase_box_rep ();
   void position_at (SI x, SI y, array<rectangle>& logs,
                     std::shared_ptr<rectangle> changed);
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+phrase_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 phrase_box_rep::phrase_box_rep (path ip, array<box> bs, array<SI> spc)
     : concat_box_rep (ip, bs, spc, false), changed_ptr (nullptr) {}
@@ -846,8 +857,9 @@ phrase_box_rep::position_at (SI x, SI y, array<rectangle>& logs,
 }
 
 void
-phrase_box_rep::display (renderer ren) {
-  ren->apply_shadow (x1, y1, x2, y2);
+RenderVisitor::visit (phrase_box_rep& box) {
+  renderer ren= this->ren;
+  ren->apply_shadow (box.x1, box.y1, box.x2, box.y2);
 }
 
 /******************************************************************************

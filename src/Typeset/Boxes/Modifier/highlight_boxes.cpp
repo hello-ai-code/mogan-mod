@@ -9,6 +9,7 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
 #include "analyze.hpp"
@@ -42,7 +43,12 @@ struct highlight_box_rep : public change_box_rep {
   void display_ring (renderer& ren);
   void display_band (renderer& ren);
   void display_rounded (renderer& ren, int style);
+  void accept (BoxVisitor& v);
 };
+
+void
+highlight_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 highlight_box_rep::highlight_box_rep (path ip, box b, box xb,
                                       ornament_parameters ps)

@@ -9,7 +9,9 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/composite.hpp"
+#include "Boxes/render_visitor.hpp"
 
 /******************************************************************************
  * The stack_box representation
@@ -28,7 +30,6 @@ struct stack_box_rep : public composite_box_rep {
 
   void position (array<SI> spc);
   void finalize ();
-  void display (renderer ren);
   void clear_incomplete (rectangles& rs, SI pixel, int i, int i1, int i2);
   bool access_allowed ();
 
@@ -38,7 +39,12 @@ struct stack_box_rep : public composite_box_rep {
   selection     find_selection (path lbp, path rbp);
   gr_selections graphical_select (SI x, SI y, SI dist);
   gr_selections graphical_select (SI x1, SI y1, SI x2, SI y2);
+  void accept (BoxVisitor& v);
 };
+
+void
+stack_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Stack boxes
@@ -72,8 +78,9 @@ stack_box_rep::finalize () {
 }
 
 void
-stack_box_rep::display (renderer ren) {
-  ren->apply_shadow (x1, y1, x2, y2);
+RenderVisitor::visit (stack_box_rep& box) {
+  renderer ren= this->ren;
+  ren->apply_shadow (box.x1, box.y1, box.x2, box.y2);
 }
 
 bool

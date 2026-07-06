@@ -13,6 +13,8 @@
  ******************************************************************************/
 
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "formatter.hpp"
 
 /******************************************************************************
@@ -27,15 +29,19 @@ struct test_box_rep : public box_rep {
     y2= y4= 25 << 8;
   }
   operator tree () { return "test"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
 
 void
-test_box_rep::display (renderer ren) {
+test_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
+
+void
+RenderVisitor::visit (test_box_rep& box) {
+  renderer ren= this->ren;
   ren->set_pencil (pencil (green, PIXEL));
-  ren->line (x1, y1, x2, y2);
-  ren->line (x1, y2, x2, y1);
-  // ren->arc (x1, y1, x2, y2, 45*64, 90*64);
+  ren->line (box.x1, box.y1, box.x2, box.y2);
+  ren->line (box.x1, box.y2, box.x2, box.y1);
 }
 
 /******************************************************************************
@@ -48,8 +54,12 @@ struct line_box_rep : public box_rep {
 
   line_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, pencil pen);
   operator tree () { return "line"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+line_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 line_box_rep::line_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, pencil p)
     : box_rep (ip) {
@@ -70,9 +80,10 @@ line_box_rep::line_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, pencil p)
 }
 
 void
-line_box_rep::display (renderer ren) {
-  ren->set_pencil (pen);
-  ren->line (X1, Y1, X2, Y2);
+RenderVisitor::visit (line_box_rep& box) {
+  renderer ren= this->ren;
+  ren->set_pencil (box.pen);
+  ren->line (box.X1, box.Y1, box.X2, box.Y2);
 }
 
 /******************************************************************************
@@ -86,8 +97,12 @@ struct polygon_box_rep : public box_rep {
 
   polygon_box_rep (path ip, array<SI> x, array<SI> y, brush f, pencil o);
   operator tree () { return "polygon"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+polygon_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 polygon_box_rep::polygon_box_rep (path ip, array<SI> X, array<SI> Y, brush f,
                                   pencil o)
@@ -109,14 +124,15 @@ polygon_box_rep::polygon_box_rep (path ip, array<SI> X, array<SI> Y, brush f,
 }
 
 void
-polygon_box_rep::display (renderer ren) {
-  ren->set_pencil (pencil (fill, 0));
-  ren->polygon (x, y);
-  if (outline->get_width () > 0) {
-    int i, n= N (x);
-    ren->set_pencil (outline);
+RenderVisitor::visit (polygon_box_rep& box) {
+  renderer ren= this->ren;
+  ren->set_pencil (pencil (box.fill, 0));
+  ren->polygon (box.x, box.y);
+  if (box.outline->get_width () > 0) {
+    int i, n= N (box.x);
+    ren->set_pencil (box.outline);
     for (i= 0; i < n; i++)
-      ren->line (x[i], y[i], x[(i + 1) % n], y[(i + 1) % n]);
+      ren->line (box.x[i], box.y[i], box.x[(i + 1) % n], box.y[(i + 1) % n]);
   }
 }
 
@@ -132,8 +148,12 @@ struct arc_box_rep : public box_rep {
   arc_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, int A1, int A2,
                pencil pen);
   operator tree () { return "arc"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+arc_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 arc_box_rep::arc_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, int a1b,
                           int a2b, pencil p)
@@ -178,10 +198,10 @@ arc_box_rep::arc_box_rep (path ip, SI X1b, SI Y1b, SI X2b, SI Y2b, int a1b,
 }
 
 void
-arc_box_rep::display (renderer ren) {
-  ren->set_pencil (pen);
-  ren->arc (X1, Y1, X2, Y2, a1, a2 - a1);
-  // ren->line (x1, y1, x2, y2);
+RenderVisitor::visit (arc_box_rep& box) {
+  renderer ren= this->ren;
+  ren->set_pencil (box.pen);
+  ren->arc (box.X1, box.Y1, box.X2, box.Y2, box.a1, box.a2 - box.a1);
 }
 
 /******************************************************************************
@@ -193,8 +213,12 @@ struct image_box_rep : public box_rep {
   int      alpha;
   image_box_rep (path ip, scalable im, int alpha);
   operator tree () { return "image"; }
-  void display (renderer ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+image_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 image_box_rep::image_box_rep (path ip, scalable im2, int alpha2)
     : box_rep (ip), im (im2), alpha (alpha2) {
@@ -211,8 +235,9 @@ image_box_rep::image_box_rep (path ip, scalable im2, int alpha2)
 }
 
 void
-image_box_rep::display (renderer ren) {
-  ren->draw_scalable (im, 0, 0, alpha);
+RenderVisitor::visit (image_box_rep& box) {
+  renderer ren= this->ren;
+  ren->draw_scalable (box.im, 0, 0, box.alpha);
 }
 
 /******************************************************************************
@@ -226,9 +251,13 @@ struct control_tree_box_rep : public box_rep {
     y2                        = fn->yx;
   }
   operator tree () { return tuple ("control tree", (tree) t); }
-  void display (renderer ren) { (void) ren; }
   tree get_leaf_tree () { return t; }
+  void accept (BoxVisitor& v);
 };
+
+void
+control_tree_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 struct control_box_box_rep : public box_rep {
   box b;
@@ -237,9 +266,13 @@ struct control_box_box_rep : public box_rep {
     y2                        = fn->yx;
   }
   operator tree () { return tuple ("control box", (tree) b); }
-  void display (renderer ren) { (void) ren; }
   box  get_leaf_box () { return b; }
+  void accept (BoxVisitor& v);
 };
+
+void
+control_box_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 struct control_lazy_box_rep : public box_rep {
   lazy lz;
@@ -248,9 +281,13 @@ struct control_lazy_box_rep : public box_rep {
     y2                        = fn->yx;
   }
   operator tree () { return tuple ("control lazy", (tree) lz); }
-  void display (renderer ren) { (void) ren; }
   lazy get_leaf_lazy () { return lz; }
+  void accept (BoxVisitor& v);
 };
+
+void
+control_lazy_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * box construction routines

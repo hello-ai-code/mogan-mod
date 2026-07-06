@@ -9,8 +9,10 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "observers.hpp"
 #include "scheme.hpp"
 
@@ -41,18 +43,26 @@ struct specific_box_rep : public box_rep {
     y4= b->y4;
   }
   operator tree () { return tuple ("specific", (tree) b, filter); }
-  void display (renderer ren) {
-    bool ok= false;
-    if (filter == "screen") ok= !ren->is_printer () && !in_presentation_mode ();
-    else if (filter == "printer") ok= ren->is_printer ();
-    else if (filter == "even") ok= (ren->cur_page & 1) == 0;
-    else if (filter == "odd") ok= (ren->cur_page & 1) == 1;
-    if (ok) {
-      rectangles rs;
-      b->redraw (ren, path (), rs);
-    }
-  }
+  void accept (BoxVisitor& v);
 };
+
+void
+specific_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
+void
+RenderVisitor::visit (specific_box_rep& box) {
+  renderer ren= this->ren;
+  bool ok= false;
+  if (box.filter == "screen") ok= !ren->is_printer () && !in_presentation_mode ();
+  else if (box.filter == "printer") ok= ren->is_printer ();
+  else if (box.filter == "even") ok= (ren->cur_page & 1) == 0;
+  else if (box.filter == "odd") ok= (ren->cur_page & 1) == 1;
+  if (ok) {
+    rectangles rs;
+    box.b->redraw (ren, path (), rs);
+  }
+}
+
 
 /******************************************************************************
  * TOC boxes
@@ -67,8 +77,18 @@ struct toc_box_rep : public box_rep {
     x3= x4= y3= y4= 0;
   }
   operator tree () { return tuple ("toc", kind, title); }
-  void display (renderer ren) { ren->toc_entry (kind, title, 0, y2); }
+  void accept (BoxVisitor& v);
 };
+
+void
+toc_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
+void
+RenderVisitor::visit (toc_box_rep& box) {
+  renderer ren= this->ren;
+  ren->toc_entry (box.kind, box.title, 0, box.y2);
+}
+
 
 /******************************************************************************
  * Flag boxes
@@ -81,7 +101,12 @@ struct flag_box_rep : public composite_box_rep {
   operator tree () { return tree (TUPLE, "flag"); }
   void pre_display (renderer& ren);
   void post_display (renderer& ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+flag_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 void
 flag_box_rep::pre_display (renderer& ren) {

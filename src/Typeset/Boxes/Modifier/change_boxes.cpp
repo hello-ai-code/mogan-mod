@@ -9,8 +9,10 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "analyze.hpp"
 #include "effect.hpp"
 #include "gui.hpp"
@@ -351,7 +353,12 @@ public:
     lo= y1;
     hi= y2;
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+transformed_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 transformed_box_rep::transformed_box_rep (path ip, box b, frame fr2)
     : change_box_rep (ip, true), fr (fr2) {
@@ -495,7 +502,12 @@ public:
     lo= y1;
     hi= y2;
   }
+  void accept (BoxVisitor& v);
 };
+
+void
+clip_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 clip_box_rep::clip_box_rep (path ip, box b, SI X1, SI Y1, SI X2, SI Y2,
                             tree xt2, tree yt2, SI scx, SI scy)
@@ -615,7 +627,12 @@ struct cell_box_rep : public change_box_rep {
   box  adjust_cell_geometry (SI dx, SI dl, SI dr);
   void pre_display (renderer& ren);
   void post_display (renderer& ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+cell_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 cell_box_rep::cell_box_rep (path ip, box b, SI X0b, SI Y0b, SI X1, SI Y1, SI X2,
                             SI Y2, SI Bl, SI Br, SI Bb, SI Bt,
@@ -799,8 +816,18 @@ public:
     logs << rectangle (ox + x3, oy + y3, ox + x4, oy + y4);
     changed_ptr= changed;
   }
-  inline void display (renderer ren) { ren->apply_shadow (x1, y1, x2, y2); }
+  void accept (BoxVisitor& v);
 };
+
+void
+remember_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
+void
+RenderVisitor::visit (remember_box_rep& box) {
+  renderer ren= this->ren;
+  ren->apply_shadow (box.x1, box.y1, box.x2, box.y2);
+}
+
 
 /******************************************************************************
  * locus boxes
@@ -819,7 +846,12 @@ struct locus_box_rep : public change_box_rep {
   box  expand_glyphs (int mode, double factor);
   void loci (SI x, SI y, SI delta, list<string>& ids2, rectangles& rs);
   void post_display (renderer& ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+locus_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 locus_box_rep::locus_box_rep (path ip, box b, list<string> ids2, SI pixel2)
     : change_box_rep (ip, true), ids (ids2), pixel (pixel2) {
@@ -959,7 +991,12 @@ struct text_at_box_rep : public move_box_rep {
     ren->polygon (xs, ys);
   }
   */
+  void accept (BoxVisitor& v);
 };
+
+void
+text_at_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 text_at_box_rep::text_at_box_rep (path ip, box b, SI x, SI y, SI hx2, SI hy2,
                                   SI a2, SI p2)

@@ -10,6 +10,8 @@
  ******************************************************************************/
 
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "converter.hpp"
 #include "file.hpp"
 #include "formatter.hpp"
@@ -675,7 +677,7 @@ box_rep::redraw (renderer ren, path p, rectangles& l) {
     }
     else {
       l= rectangle (x3 + ren->ox, y3 + ren->oy, x4 + ren->ox, y4 + ren->oy);
-      display (ren);
+      accept (RenderVisitor (ren));
       if (!ren->is_screen) display_links (ren);
       if (nr_painted < 15) ren->apply_shadow (x1, y1, x2, y2);
       nr_painted++;
@@ -715,6 +717,11 @@ box_rep::post_display (renderer& ren) {
 void
 box_rep::display_background (renderer ren) {
   (void) ren;
+}
+
+void
+box_rep::accept (BoxVisitor& v) {
+  v.visit_default (*this);
 }
 
 void

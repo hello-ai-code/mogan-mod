@@ -9,9 +9,11 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "Boxes/graphics.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "env.hpp"
 #include "math_util.hpp"
 
@@ -36,7 +38,12 @@ struct graphics_box_rep : public composite_box_rep {
   virtual int   find_child (SI x, SI y, SI delta, bool force);
   gr_selections graphical_select (SI x, SI y, SI dist);
   gr_selections graphical_select (SI x1, SI y1, SI x2, SI y2);
+  void accept (BoxVisitor& v);
 };
+
+void
+graphics_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 graphics_box_rep::graphics_box_rep (path ip2, array<box> bs2, frame f2, grid g2,
                                     point lim1b, point lim2b)
@@ -200,9 +207,13 @@ struct point_box_rep : public box_rep {
                  string style);
   SI graphical_distance (SI x, SI y) { return (SI) norm (p - point (x, y)); }
   gr_selections graphical_select (SI x, SI y, SI dist);
-  void          display (renderer ren);
   operator tree () { return "point"; }
+  void accept (BoxVisitor& v);
 };
+
+void
+point_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 point_box_rep::point_box_rep (path ip2, point p2, SI r2, pencil pen2, brush br2,
                               string style2)
@@ -263,16 +274,17 @@ point_box_rep::graphical_select (SI x, SI y, SI dist) {
 }
 
 void
-point_box_rep::display (renderer ren) {
-  array<point> a= get_contour (style);
+RenderVisitor::visit (point_box_rep& box) {
+  renderer ren= this->ren;
+  array<point> a= get_contour (box.style);
   for (int i= 0; i < N (a); i++)
-    a[i]= p + ((double) r) * a[i];
-  if (style == "none") {
+    a[i]= box.p + ((double) box.r) * a[i];
+  if (box.style == "none") {
   }
   else if (N (a) != 0) {
-    if (br->get_type () != brush_none) {
-      ren->set_pencil (pen);
-      ren->set_brush (br);
+    if (box.br->get_type () != brush_none) {
+      ren->set_pencil (box.pen);
+      ren->set_brush (box.br);
       for (int i= 0; i < N (a); i++) {
         int j= (i + 1) % (N (a));
         ren->line ((SI) a[i][0], (SI) a[i][1], (SI) a[j][0], (SI) a[j][1]);
@@ -284,8 +296,8 @@ point_box_rep::display (renderer ren) {
       }
       ren->polygon (x, y, false);
     }
-    if (pen->get_type () != pencil_none) {
-      ren->set_pencil (pen);
+    if (box.pen->get_type () != pencil_none) {
+      ren->set_pencil (box.pen);
       for (int i= 0; i < N (a); i++) {
         int j= (i + 1) % (N (a));
         ren->line ((SI) a[i][0], (SI) a[i][1], (SI) a[j][0], (SI) a[j][1]);
@@ -293,21 +305,21 @@ point_box_rep::display (renderer ren) {
     }
   }
   else {
-    SI w = (SI) pen->get_width ();
-    SI cx= (SI) p[0];
-    SI cy= (SI) p[1];
-    SI lx= cx - r;
-    SI by= cy - r;
-    SI rx= cx + r;
-    SI ty= cy + r;
-    if (style == "disk" || br->get_type () != brush_none) {
-      ren->set_pencil (pen);
-      ren->set_brush (style == "disk" ? pen->get_brush () : br);
+    SI w = (SI) box.pen->get_width ();
+    SI cx= (SI) box.p[0];
+    SI cy= (SI) box.p[1];
+    SI lx= cx - box.r;
+    SI by= cy - box.r;
+    SI rx= cx + box.r;
+    SI ty= cy + box.r;
+    if (box.style == "disk" || box.br->get_type () != brush_none) {
+      ren->set_pencil (box.pen);
+      ren->set_brush (box.style == "disk" ? box.pen->get_brush () : box.br);
       ren->arc (lx, by + w, rx, ty + w, 0, 64 * 360);
       ren->fill_arc (lx, by + w, rx, ty + w, 0, 64 * 360);
     }
-    if (pen->get_type () != pencil_none) {
-      ren->set_pencil (pen);
+    if (box.pen->get_type () != pencil_none) {
+      ren->set_pencil (box.pen);
       ren->arc (lx, by + w, rx, ty + w, 0, 64 * 360);
     }
   }
@@ -335,12 +347,16 @@ struct curve_box_rep : public box_rep {
   SI            graphical_distance (SI x, SI y);
   gr_selections graphical_select (SI x, SI y, SI dist);
   gr_selections graphical_select (SI x1, SI y1, SI x2, SI y2);
-  void          display (renderer ren);
   operator tree () { return "curve"; }
   SI   length ();
   void apply_style ();
   void apply_motif (array<box> arrows);
+  void accept (BoxVisitor& v);
 };
+
+void
+curve_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 curve_box_rep::curve_box_rep (path ip2, curve c2, pencil pen2,
                               array<bool> style2, array<point> motif2,
@@ -492,39 +508,40 @@ curve_box_rep::graphical_select (SI x1, SI y1, SI x2, SI y2) {
 }
 
 void
-curve_box_rep::display (renderer ren) {
+RenderVisitor::visit (curve_box_rep& box) {
+  renderer ren= this->ren;
   int  i, n;
-  bool use_native_drawing= ren->support_native_curve (c);
+  bool use_native_drawing= ren->support_native_curve (box.c);
 
-  ren->set_brush (fill_br);
-  if (!is_pending_ellipse && fill_br->get_type () != brush_none) {
+  ren->set_brush (box.fill_br);
+  if (!box.is_pending_ellipse && box.fill_br->get_type () != brush_none) {
     if (use_native_drawing) {
-      ren->draw_curve (c, true);
+      ren->draw_curve (box.c, true);
     }
     else {
-      n= N (a);
+      n= N (box.a);
       array<SI> x (n), y (n);
       for (i= 0; i < n; i++) {
-        x[i]= (SI) a[i][0];
-        y[i]= (SI) a[i][1];
+        x[i]= (SI) box.a[i][0];
+        y[i]= (SI) box.a[i][1];
       }
       ren->polygon (x, y, false);
     }
   }
-  ren->set_pencil (pen->set_cap (cap_flat));
-  if (pen->get_type () != pencil_none) {
+  ren->set_pencil (box.pen->set_cap (cap_flat));
+  if (box.pen->get_type () != pencil_none) {
 
     // TODO: Add options for handling round/nonround joins & line ends
-    if (N (style) == 0) {
+    if (N (box.style) == 0) {
       if (use_native_drawing) {
-        ren->draw_curve (c);
+        ren->draw_curve (box.c);
       }
       else {
-        n= N (a);
+        n= N (box.a);
         array<SI> x (n), y (n);
         for (i= 0; i < n; i++) {
-          x[i]= (SI) a[i][0];
-          y[i]= (SI) a[i][1];
+          x[i]= (SI) box.a[i][0];
+          y[i]= (SI) box.a[i][1];
         }
         ren->lines (x, y);
       }
@@ -533,26 +550,26 @@ curve_box_rep::display (renderer ren) {
       SI li= 0, o= 0;
       i= 0;
       int   no;
-      point prec= a[0];
-      for (no= 0; no < N (styled_n); no++) {
+      point prec= box.a[0];
+      for (no= 0; no < N (box.styled_n); no++) {
         array<SI> x, y;
-        point     seg= a[i + 1] - a[i];
-        while (fnull (norm (seg), 1e-6) && i + 2 < N (a)) {
+        point     seg= box.a[i + 1] - box.a[i];
+        while (fnull (norm (seg), 1e-6) && i + 2 < N (box.a)) {
           i++;
-          seg= a[i + 1] - a[i];
+          seg= box.a[i + 1] - box.a[i];
         }
-        if (fnull (norm (seg), 1e-6) && i + 2 >= N (a)) break;
-        SI lno= styled_n[no] * style_unit, len= li + (SI) norm (seg);
-        while (i + 2 < N (a) && lno > len) {
+        if (fnull (norm (seg), 1e-6) && i + 2 >= N (box.a)) break;
+        SI lno= box.styled_n[no] * box.style_unit, len= li + (SI) norm (seg);
+        while (i + 2 < N (box.a) && lno > len) {
           li= len;
           if (no % 2 != 0) {
             // 1st subsegment of a dash, along with the next ones
             x << (SI) prec[0];
             y << (SI) prec[1];
-            prec= a[i + 1];
+            prec= box.a[i + 1];
           }
           i++;
-          seg= a[i + 1] - a[i];
+          seg= box.a[i + 1] - box.a[i];
           len= li + (SI) norm (seg);
         }
         if (N (x) > 0 && no % 2 != 0) {
@@ -560,8 +577,8 @@ curve_box_rep::display (renderer ren) {
           y << (SI) prec[1];
         }
         o= lno - li;
-        if (i < N (a)) {
-          point b= a[i] + o * (seg / norm (seg));
+        if (i < N (box.a)) {
+          point b= box.a[i] + o * (seg / norm (seg));
           if (no % 2 == 0) prec= b;
           else {
             // Last subsegment of a dash
@@ -579,8 +596,8 @@ curve_box_rep::display (renderer ren) {
   }
 
   rectangles ll;
-  if (!is_nil (arrows[0])) arrows[0]->redraw (ren, path (), ll);
-  if (!is_nil (arrows[1])) arrows[1]->redraw (ren, path (), ll);
+  if (!is_nil (box.arrows[0])) box.arrows[0]->redraw (ren, path (), ll);
+  if (!is_nil (box.arrows[1])) box.arrows[1]->redraw (ren, path (), ll);
 }
 
 SI
@@ -735,9 +752,13 @@ curve_box_rep::apply_motif (array<box> arrows) {
 struct spacial_box_rep : public box_rep {
   spacial obj;
   spacial_box_rep (path ip, spacial obj2);
-  void display (renderer ren);
   operator tree () { return "spacial"; }
+  void accept (BoxVisitor& v);
 };
+
+void
+spacial_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 spacial_box_rep::spacial_box_rep (path ip, spacial obj2)
     : box_rep (ip), obj (obj2) {
@@ -749,8 +770,9 @@ spacial_box_rep::spacial_box_rep (path ip, spacial obj2)
 }
 
 void
-spacial_box_rep::display (renderer ren) {
-  ren->draw_spacial (obj);
+RenderVisitor::visit (spacial_box_rep& box) {
+  renderer ren= this->ren;
+  ren->draw_spacial (box.obj);
 }
 
 /******************************************************************************

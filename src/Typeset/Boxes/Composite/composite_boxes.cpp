@@ -99,10 +99,6 @@ composite_box_rep::left_justify () {
  ******************************************************************************/
 
 void
-composite_box_rep::display (renderer ren) {
-  (void) ren;
-}
-
 int
 composite_box_rep::subnr () {
   return N (bs);

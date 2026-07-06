@@ -13,6 +13,8 @@
 #define COMPOSITE_H
 #include "array.hpp"
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 
 /******************************************************************************
  * Composite boxes
@@ -35,7 +37,7 @@ struct composite_box_rep : public box_rep {
 
   int  subnr ();
   box  subbox (int i);
-  void display (renderer ren);
+  void accept (BoxVisitor& v) { v.visit (*this); }
 
   virtual int    find_child (SI x, SI y, SI delta, bool force);
   virtual path   find_box_path (SI x, SI y, SI delta, bool force, bool& found);

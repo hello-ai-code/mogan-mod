@@ -11,8 +11,10 @@
 
 #include "Boxes/construct.hpp"
 #include "Boxes/xkerning.hpp"
+#include "Boxes/render_visitor.hpp"
 #include "analyze.hpp"
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
 #include "colors.hpp"
 #include "cork.hpp"
 #include "font.hpp"
@@ -35,7 +37,7 @@ struct text_box_rep : public box_rep {
   box adjust_kerning (int mode, double factor);
   box expand_glyphs (int mode, double factor);
 
-  void   display (renderer ren);
+  void   accept (BoxVisitor& v);
   color  get_bg_color ();
   void   set_bg_color (color c);
   double left_slope ();
@@ -73,7 +75,12 @@ struct text_box_rep : public box_rep {
   box    right_auto_spacing (SI size);
   box    left_contract_kerning (double factor);
   box    right_contract_kerning (double factor);
+  void accept (BoxVisitor& v);
 };
+
+void
+text_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Routines for text boxes
@@ -201,17 +208,18 @@ text_box_rep::expand_glyphs (int mode, double factor) {
 }
 
 void
-text_box_rep::display (renderer ren) {
+RenderVisitor::visit (text_box_rep& box) {
+  renderer ren= this->ren;
   // 如果有背景色（非透明），先绘制背景
   int r, g, b, a;
-  get_rgb_color (bg_color, r, g, b, a);
+  get_rgb_color (box.bg_color, r, g, b, a);
   if (a > 0) {
-    brush bg_brush (bg_color);
+    brush bg_brush (box.bg_color);
     ren->set_background (bg_brush);
-    SI     bg_x1= x1;
-    SI     bg_x2= x2;
+    SI     bg_x1= box.x1;
+    SI     bg_x2= box.x2;
     metric ex_m;
-    fn->get_extents ("M", ex_m);
+    box.fn->get_extents ("M", ex_m);
     SI bg_y1= ex_m->y1 - 10 * ren->pixel; // 向下延伸10个像素
     SI bg_y2= ex_m->y2 + 10 * ren->pixel; // 向上延伸10个像素
 
@@ -224,10 +232,10 @@ text_box_rep::display (renderer ren) {
   }
 
   // 绘制文本（如果有文本）
-  if (N (str) > 0) {
-    ren->set_pencil (pen);
-    if (is_nil_or_zero (xk)) fn->draw (ren, str, 0, 0);
-    else fn->draw (ren, str, xk->left, 0, xk->padding);
+  if (N (box.str) > 0) {
+    ren->set_pencil (box.pen);
+    if (is_nil_or_zero (box.xk)) box.fn->draw (ren, box.str, 0, 0);
+    else box.fn->draw (ren, box.str, box.xk->left, 0, box.xk->padding);
   }
 }
 

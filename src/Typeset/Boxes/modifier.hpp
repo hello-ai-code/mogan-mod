@@ -13,6 +13,8 @@
 #ifndef MODIFIER_H
 #define MODIFIER_H
 #include "boxes.hpp"
+#include "Boxes/box_visitor.hpp"
+#include "Boxes/render_visitor.hpp"
 
 class modifier_box_rep : public box_rep {
 public:
@@ -23,7 +25,7 @@ public:
 
   int  subnr ();
   box  subbox (int i);
-  void display (renderer ren);
+  void accept (BoxVisitor& v) { v.visit (*this); }
   operator tree ();
   tree message (tree t, SI x, SI y, rectangles& rs);
   void loci (SI x, SI y, SI delta, list<string>& ids, rectangles& rs);

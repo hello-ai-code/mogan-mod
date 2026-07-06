@@ -9,6 +9,7 @@
  * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
  ******************************************************************************/
 
+#include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
 #include "analyze.hpp"
@@ -39,7 +40,12 @@ struct art_box_rep : public composite_box_rep {
   void display_one (renderer ren, tree prg);
   void pre_display (renderer& ren);
   void post_display (renderer& ren);
+  void accept (BoxVisitor& v);
 };
+
+void
+art_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+
 
 /******************************************************************************
  * Required routines
