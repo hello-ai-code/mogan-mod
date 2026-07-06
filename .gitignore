@@ -1,0 +1,56 @@
+# binary files
+*.vs
+*.so
+*.[oa]
+*.exe
+*.pyc
+build
+.kdev4
+*.kdev4
+*.py[cod]
+*$py.class
+__pycache__/
+
+# editor files
+*.sln
+.idea
+.vscode
+.claude/*
+!.claude/agents/
+
+# Mac OS
+.DS_Store
+*/.DS_Store
+
+# temp files
+*~
+*.log
+SVNREV
+Testing
+texmacs.1
+tests/gtest
+cmake-build-debug
+CMakeLists.txt.user
+misc/benchmark/gbench
+
+TeXmacs/progs/ice-9
+
+.xmake/
+src/System/config.h
+src/System/tm_configure.hpp
+
+.cache/
+compile_commands.json
+
+docs/**/plugin_binary.md
+
+# Binary of the goldfish plugin
+TeXmacs/plugins/goldfish/bin/goldfish
+goldfish.dSYM/
+*.sym
+*goldfish.pdb
+
+# font
+TeXmacs/fonts/opentype/noto
+
+record

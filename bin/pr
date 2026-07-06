@@ -1,0 +1,5 @@
+#!/usr/bin/env elvish
+
+var num = $args[0]
+
+gh pr checkout $num

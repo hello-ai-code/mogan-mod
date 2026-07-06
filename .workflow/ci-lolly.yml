@@ -1,0 +1,60 @@
+version: '1.0'
+name: ci-lolly
+displayName: ci-lolly
+triggers:
+  trigger: auto
+  pr:
+    branches:
+      precise:
+        - main
+    paths:
+      precise:
+        - .workflow/ci-lolly.yml
+        - 3rdparty/lolly/
+  push:
+    branches:
+      precise:
+        - main
+    paths:
+      precise:
+        - .workflow/ci-lolly.yml
+        - 3rdparty/lolly/
+
+variables:
+  XMAKE_MAIN_REPO: 'https://gitee.com/tboox/xmake-repo.git'
+  XMAKE_BINARY_REPO: 'https://gitee.com/xmake-mirror/build-artifacts.git'
+  XMAKE_ROOT: y
+  QT_QPA_PLATFORM: offscreen
+          
+
+stages:
+  - name: build_and_test 
+    displayName: build_and_test
+    strategy: fast
+    trigger: auto
+    executor: []
+    steps:
+      - step: build@gcc
+        name: build
+        displayName: Build and Test
+        gccVersion: '9.4'
+        commands:
+          - rm -rf ./xmake.lua
+          - wget https://gitee.com/XmacsLabs/mogan/attach_files/1813514/download -O /tmp/xmake.deb
+          - sha1sum /tmp/xmake.deb | grep ac3629bd0fa66f179aef35dc00b7a1c89735651a
+          - apt install /tmp/xmake.deb
+          - apt-get update
+          - apt-get install -y libcurl4-openssl-dev pkg-config
+          - cd 3rdparty/lolly
+          - xmake repo -u
+          - xmake config -vD --yes --enable_tests=true
+          - xmake build -vD liblolly
+          - xmake --yes -vD --group=tests -j 1 build
+          - xmake run -vD
+        caches: [
+          3rdparty/lolly/build/.build_cache,
+        ]
+        notify: []
+        strategy:
+          retry: '0'
+          stepTimeout: 30

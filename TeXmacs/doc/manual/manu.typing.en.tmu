@@ -1,0 +1,138 @@
+<TMU|<tuple|1.1.0|2025.2.2>>
+
+<style|<tuple|tmudoc|number-europe>>
+
+<\body>
+  <tmdoc-title|Writing Simple Documents><label|sec-man-text>
+
+  <section*|0. \ Conventions Used in This Document>
+
+  <\itemize>
+    <item><key|I> denotes uppercase I, and <key|i> denotes lowercase i. If there is no plus sign between keys, it means the keys should be pressed in sequence. Otherwise, if a plus sign exists, it indicates simultaneous key press.
+
+    <item><key|Tab> refers to variants in the Tab cycle. For example, the input method for <math|\<nabla\>> is <key|V> followed by pressing <key|Tab> twice; the input method for <math|\<Phi\>> is <key|V> followed by pressing <key|Tab> once. However, in this document we do not distinguish the number of <key|Tab> presses; both <math|\<nabla\>> and <math|\<Phi\>> will be represented by the shortcut <key|V Tab>.
+  </itemize>
+
+  \;
+
+  <section|Generalities><label|sec-man-generalities>
+
+  Ordinary characters and punctuation marks can be entered directly from the keyboard. Most modern systems also provide shortcuts for accented characters and other special symbols. In Mogan/Liii STEM, <key|Tab> suffixes can be used to input accented characters via Tab cycling. For example, “é” is typed as <key|e><key|-> followed by pressing <key|Tab> twice; “à” is typed as <key|a><key|-> followed by pressing <key|Tab> four times.
+
+  Long words are automatically hyphenated at line boundaries. For Chinese text, you must specify the language in <menu|Document|Language> to enable proper line breaking.
+
+  On the left of the bottom status bar, you can see the document style and the text properties at the cursor. For example, if the status bar displays “<with|language|english|<with|font|roman|text roman 10><with|font|cyrillic|>>”, it means you are working in text mode, using the <with|font|roman|roman> font with size <with|font|roman|10>. You may change the text properties (font, size, color, language) under the <menu|Format> menu. You may also select text and then change its properties. Global text properties can be changed in the <menu|Document> menu.
+
+  On the right of the bottom status bar, properties of the character or object to the left of the cursor are displayed. The environment at the cursor location is also shown. All these pieces of information help you understand the cursor position within the document.
+
+  <section|Entering Structured Text><label|sec-man-structure>
+
+  Long documents usually have a clear structure: chapters, sections, and subsections. They contain different types of text, such as plain text, quotations, footnotes, theorems, etc. After choosing a style from <menu|Document|Style>, Mogan/Liii STEM formats your document accordingly—for example, numbering of sections, pages, theorems, and formatting of footnotes and citations.
+
+  Available standard document styles include <tmstyle|generic>, <tmstyle|article>, <tmstyle|book>, <tmstyle|letter>, <tmstyle|exam>, <tmstyle|beamer>, <tmstyle|seminar>, <tmstyle|source>. For example, the article style is suitable for writing papers. Other styles may be used for journal submissions or special purposes, such as the official Mogan/Liii STEM documentation.
+
+  Once you choose a style, you may organize text using sections and specific environments. Examples of environments include theorem, proposition, and lemma (see <menu|Insert|Enunciation>). Ordered and unordered lists may also help organize text. Common content tags include <markup|strong>, <markup|name>, etc., which can modify specific text properties.
+
+  When proficient with Mogan/Liii STEM, you can create your own environments in your style file. For example, if you frequently insert quotations and want them to be italic with 1cm margins on both sides, the best approach is to define a custom quotation environment instead of manually modifying the text every time. This not only speeds up writing but also allows you to change all quotations at once simply by modifying the environment definition. For instance, if you want to make all quotation text smaller, altering the environment is far easier than editing each instance.
+
+  Understanding general editing rules greatly helps with editing structured text in Mogan/Liii STEM. One key concept is the “focus.” Consider the following example. Suppose we are typing this classic theorem:
+
+  <\quote-env>
+    <\big-envbox>
+      <\theorem>
+        <small-focus|<math|\<mathe\><rsup|\<mathpi\>*\<mathi\>>=\<um\>1<math-cursor>>>.
+      </theorem>
+    </big-envbox>
+  </quote-env>
+
+  In this example, the innermost cyan-outlined tag is called the current focus.
+
+  The <menu|Focus> menu and the focus toolbar (the bottom-most toolbar) are highly context-sensitive and depend on the current focus. In this case, the focus toolbar contains a popup menu “Equation.” When you choose <menu|Equation>, the text becomes:
+
+  <\quote-env>
+    <\big-envbox>
+      <\theorem>
+        \;
+
+        <\big-focus>
+          <\equation*>
+            \<mathe\><rsup|\<mathpi\>*\<mathi\>>=\<um\>1<math-cursor>.
+          </equation*>
+        </big-focus>
+      </theorem>
+    </big-envbox>
+  </quote-env>
+
+  Similarly, the arrow buttons on the left of the focus toolbar allow you to jump between similar tags. In this example, they allow you to browse all formulas or equations in the document. For more details, see <hlink||manu.editing.zh.tmu#sec-man-structured-editing> and <hlink|Structured Editing|manu.editing.en.tmu#sec-man-structured-editing>.
+
+  Another important concept is the editing mode. There are three modes: text mode, math mode, and command mode. Modes change less frequently than focus changes. Their toolbar is located above the focus toolbar. The <menu|Insert> and <menu|Format> menus also depend on the current mode.
+
+  <section|Content Tags><label|sec-man-content-tags>
+
+  Content tags are one of the simplest structures in text. The <menu|Insert|Content tag> menu lists all available content tags. Content tags indicate that certain text has special meaning or serves a special purpose. For example, important text should be tagged with <markup|strong>, which by default renders the text in <strong|bold>. Note that different document styles may render enhanced text differently—for instance, a slide style may use a different color or a slightly transparent effect.
+
+  Below are common content tags and their purposes:
+
+  <big-table|<descriptive-table|<tformat|<table|<row|<cell|Tag>|<cell|Example>|<cell|Purpose>>|<row|<cell|<markup|strong>>|<cell|<with|font|roman|this is <strong|important>>>|<cell|Boldface to indicate importance>>|<row|<cell|<markup|em>>|<cell|<with|font|roman|the <em|real> thing>>|<cell|Emphasis>>|<row|<cell|<markup|dfn>>|<cell|<with|font|roman|A <dfn|gnu> is a horny beast>>|<cell|Definition of a concept>>|<row|<cell|<markup|samp>>|<cell|<with|font|roman|the <samp|ae> ligature æ>>|<cell|Letter sequences>>|<row|<cell|<markup|name>>|<cell|<with|font|roman|the <name|Linux> system>>|<cell|Names of things>>|<row|<cell|<markup|person>>|<cell|<with|font|roman|I am <name|Joris>>>|<cell|People’s names>>|<row|<cell|<markup|cite*>>|<cell|<with|font|roman|Melville's <cite*|Moby Dick>>>|<cell|Bibliographical reference>>|<row|<cell|<markup|abbr>>|<cell|<with|font|roman|I work at the <abbr|C.N.R.S.>>>|<cell|Abbreviations>>|<row|<cell|<markup|acronym>>|<cell|<with|font|roman|the <acronym|HTML> format>>|<cell|Acronyms>>|<row|<cell|<markup|verbatim>>|<cell|<with|font|roman|the program said <verbatim|hello>>>|<cell|Literal text, e.g., program output>>|<row|<cell|<markup|kbd>>|<cell|<with|font|roman|Please type <kbd|return>>>|<cell|Text to be typed on the keyboard>>|<row|<cell|<markup|code*>>|<cell|<with|font|concrete|<code*|cout \<less\>\<less\> 1+1;> yields <verbatim|2>>>|<cell|Code>>|<row|<cell|<markup|var>>|<cell|<with|font|roman|<verbatim|cp <var|src-file> <var|dest-file>>>>|<cell|Variables in programs>>>>>|Overview of common content tags.>
+
+  <section|Environments><label|sec-man-environments>
+
+  Similar to content tags, environments give a block of text a special meaning. Content tags usually apply to short spans of text, whereas environments often span multiple lines. For example, mathematical writing often uses the <markup|theorem> and <markup|proof> environments:
+
+  <\theorem>
+    There exist no positive integers <math|a,b,c> and <math|n<around*|(|n\<geqslant\>3|)>> such that <math|a<rsup|n>+b<rsup|n>=c<rsup|n>>.
+  </theorem>
+
+  <\proof>
+    The margin is too small to contain my proof.
+  </proof>
+
+  Environments may be inserted via <menu|Insert>. Environments similar to the theorem environment include <markup|proposition>, <markup|lemma>, <markup|corollary>, <markup|axiom>, and <markup|definition>. Other commonly used environments include <markup|remark>, <markup|note>, <markup|example>, <markup|warning>, <markup|exercise>, and <markup|problem>, which are rendered in styles similar to the theorem.
+
+  <section|Lists><label|sec-man-lists>
+
+  Unordered lists are inserted through <menu|Insert|Itemize>. You may choose <math|\<bullet\>> (bullet), <math|<op|->> (dash), or <math|<op|\<rightarrow\>>> (arrow) as the item marker. Sub-lists may be nested inside lists, as shown below:
+
+  <\itemize>
+    <item>The first item.
+
+    <item>A sublist follows:
+
+    <\itemize>
+      <item>A sub-item.
+
+      <item>Another sub-item.
+    </itemize>
+
+    <item>The last item.
+  </itemize>
+
+  The default markers vary automatically by nesting level: the outermost level uses <math|\<bullet\>>, while the second level uses <math|<op|\<circ\>>>. When the cursor is inside a list, pressing <key|Enter> automatically creates a new item. If an item consists of multiple paragraphs, you may start a new paragraph with <key|shift+Enter>.
+
+  Ordered lists may be inserted through <menu|Insert|Enumerate>. Similar to unordered lists, except the items are numbered. Below is an example using Roman numerals:
+
+  <\enumerate-Roman>
+    <item>The first item
+
+    <item>The second item
+
+    <item>The last item
+  </enumerate-Roman>
+
+  The last type of list is the description list, inserted through <menu|Insert|Description>, used to introduce a sequence of concepts:
+
+  <\description>
+    <\with|font|roman>
+      <item*|Gnu>A hairy but gentle beast.
+
+      <item*|Gnat>Lives only in the zoo.
+    </with>
+  </description>
+</body>
+
+<\initial>
+  <\collection>
+    <associate|page-medium|paper>
+    <associate|page-screen-margin|false>
+  </collection>
+</initial>

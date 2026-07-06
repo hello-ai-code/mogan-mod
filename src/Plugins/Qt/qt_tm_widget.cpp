@@ -1,0 +1,3382 @@
+
+/******************************************************************************
+ * MODULE     : qt_tm_widget.cpp
+ * DESCRIPTION: The main TeXmacs input widget and its embedded counterpart.
+ * COPYRIGHT  : (C) 2008  Massimiliano Gubinelli
+ *******************************************************************************
+ * This software falls under the GNU general public license version 3 or later.
+ * It comes WITHOUT ANY WARRANTY WHATSOEVER. For details, see the file LICENSE
+ * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
+ ******************************************************************************/
+
+#include <QApplication>
+#include <QComboBox>
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDialog>
+#include <QDockWidget>
+#include <QFontMetrics>
+#include <QGuiApplication>
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLayoutItem>
+#include <QMainWindow>
+#include <QMenuBar>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QObject>
+#include <QPushButton>
+#include <QResource>
+#include <QStatusBar>
+#include <QTimer>
+#include <QToolBar>
+#include <QToolButton>
+#include <QWindow>
+
+#include "analyze.hpp"
+#include "config.h"
+#include "scheme.hpp"
+
+#include "qt_chat_controller.hpp"
+#include "qt_gui.hpp"
+#include "qt_pdf_reader_widget.hpp"
+#include "qt_pdf_toolbar.hpp"
+#include "qt_picture.hpp"
+#include "qt_renderer.hpp"
+#include "qt_tm_widget.hpp"
+#include "qt_utilities.hpp"
+
+bool in_presentation_mode ();
+
+#if !IS_COMMUNITY
+#include "telemetry.hpp"
+#endif
+
+#include "QTMGuiHelper.hpp" // needed to connect()
+#include "QTMInteractiveInputHelper.hpp"
+#include "QTMInteractivePrompt.hpp"
+#include "QTMOAuth.hpp"
+#include "QTMStartupTabWidget.hpp"
+#include "QTMStyle.hpp" // qtstyle()
+#include "QTMTabPage.hpp"
+#include "QTMWindow.hpp"
+#include "new_view.hpp"
+#include "new_window.hpp"
+#include "preferences.hpp"
+#include "qt_dialogues.hpp"
+#include "qt_menu.hpp"
+#include "qt_simple_widget.hpp"
+#include "qt_window_widget.hpp"
+#include "tm_server.hpp"
+#include "tm_sys_utils.hpp"
+#include "tm_url.hpp"
+
+#include <moebius/data/scheme.hpp>
+
+using moebius::data::scm_quote;
+
+int menu_count= 0; // zero if no menu is currently being displayed
+list<qt_tm_widget_rep*> waiting_widgets;
+extern bool             texmacs_started;
+
+static bool
+is_startup_tab_file (const string& file) {
+  return file == "tmfs://startup-tab";
+}
+
+/**
+ * @brief 判断给定文件路径是否指向聊天标签页 buffer。
+ * @param file 文件路径字符串。
+ * @return 若文件为 \c tmfs://chat-tab 则返回 true。
+ */
+static bool
+is_chat_tab_file (const string& file) {
+  return file == "tmfs://chat-tab";
+}
+
+static url
+window_view_for_widget (qt_tm_widget_rep* owner) {
+  if (owner == nullptr) return url_none ();
+
+  array<url> win_urls= windows_list ();
+  for (int i= 0; i < N (win_urls); ++i) {
+    tm_window win= concrete_window (win_urls[i]);
+    if (win != NULL && win->wid.rep == owner) {
+      url win_view= window_to_view (win_urls[i]);
+      if (!is_none (win_view)) return win_view;
+    }
+  }
+
+  return url_none ();
+}
+
+static bool
+is_startup_tab_current_view () {
+  url view= get_current_view_safe ();
+  if (is_none (view)) return false;
+  return view_to_buffer (view) == url ("tmfs://startup-tab");
+}
+
+static QRect
+login_dialog_anchor_rect (QWidget* loginButton) {
+  if (!loginButton) return QRect ();
+  return QRect (loginButton->mapToGlobal (QPoint (0, 0)), loginButton->size ());
+}
+
+static void
+show_login_dialog_at_button (QWK::LoginDialog* dialog, QWidget* loginButton) {
+  if (!dialog || !loginButton) return;
+  const QRect anchorRect= login_dialog_anchor_rect (loginButton);
+  dialog->showAtRect (anchorRect, DpiUtils::scaled (6));
+}
+
+static void
+replaceActions (QWidget* dest, QList<QAction*>* src) {
+  // NOTE: the parent hierarchy of the actions is not modified while installing
+  //       the menu in the GUI (see qt_menu.hpp for this memory management
+  //       policy)
+  if (src == NULL || dest == NULL)
+    TM_FAILED ("replaceActions expects valid objects");
+  dest->setUpdatesEnabled (false);
+  QList<QAction*> list= dest->actions ();
+  for (int i= 0; i < list.count (); i++) {
+    QAction* a= list[i];
+    dest->removeAction (a);
+  }
+  for (int i= 0; i < src->count (); i++) {
+    QAction* a= (*src)[i];
+    dest->addAction (a);
+  }
+  dest->setUpdatesEnabled (true);
+}
+
+static bool
+same_actions (QWidget* dest, QList<QAction*>* src) {
+  if (src == NULL || dest == NULL) return false;
+  QList<QAction*> current= dest->actions ();
+  if (current.count () != src->count ()) return false;
+  for (int i= 0; i < current.count (); ++i) {
+    if (current[i] != (*src)[i]) return false;
+  }
+  return true;
+}
+
+static void
+replaceButtons (QToolBar* dest, QList<QAction*>* src) {
+  if (src == NULL || dest == NULL)
+    TM_FAILED ("replaceButtons expects valid objects");
+  if (same_actions (dest, src)) return;
+  dest->setUpdatesEnabled (false);
+  bool visible= dest->isVisible ();
+  if (visible) dest->hide (); // TRICK: to avoid flicker of the dest widget
+  replaceActions (dest, src);
+  QList<QObject*> list= dest->children ();
+  for (int i= 0; i < list.count (); ++i) {
+    QToolButton* button= qobject_cast<QToolButton*> (list[i]);
+    if (button) {
+      button->setPopupMode (QToolButton::InstantPopup);
+      if (tm_style_sheet == "") button->setStyle (qtmstyle ());
+    }
+  }
+  if (visible) dest->show (); // TRICK: see above
+  dest->setUpdatesEnabled (true);
+}
+
+void
+QTMInteractiveInputHelper::commit (int result) {
+  if (wid && result == QDialog::Accepted) {
+    QString    item= "#f";
+    QComboBox* cb  = sender ()->findChild<QComboBox*> ("input");
+    if (cb) item= cb->currentText ();
+    static_cast<qt_input_text_widget_rep*> (wid->int_input.rep)->input=
+        from_qstring (item);
+    static_cast<qt_input_text_widget_rep*> (wid->int_input.rep)->cmd ();
+  }
+  sender ()->deleteLater ();
+}
+
+/******************************************************************************
+ * qt_tm_widget_rep
+ ******************************************************************************/
+
+qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
+    : qt_window_widget_rep (new QTMWindow (0), "popup", _quit), helper (this),
+      prompt (NULL), full_screen (false), is_presentation (false),
+      menuToolBarVisibleCache (false), titleBarVisibleCache (false),
+      scmNotificationBar (nullptr), loginButton (nullptr), vipButton (nullptr),
+      m_loginDialog (nullptr), avatarLabel (nullptr), nameLabel (nullptr),
+      accountIdLabel (nullptr), membershipPeriodLabel (nullptr),
+      membershipTitleLabel (nullptr), loginActionButton (nullptr),
+      logoutButton (nullptr), m_userId (""), m_memberType (""),
+      m_currentScmNotificationItem (""), startupContentWidget (nullptr),
+      startupTabMode (false), pdfViewerWidget (nullptr), pdfTabMode (false),
+      currentPdfPath (""), lastLoadedPdfPath (""), chatContentWidget (nullptr),
+      chatTabMode (false), chatSideDock (nullptr),
+      chatSidebarToggleBtn (nullptr), chatSidebarMode (false),
+      chatSidebarModeMemory_ (false), centralWidgetUpdatesFrozen_ (false) {
+  type= texmacs_widget;
+
+  main_widget= concrete (::glue_widget (true, true, 1, 1));
+
+  // decode mask
+  visibility[0] = (mask & 1) == 1;       // header
+  visibility[1] = (mask & 2) == 2;       // main
+  visibility[2] = (mask & 4) == 4;       // mode
+  visibility[3] = (mask & 8) == 8;       // focus
+  visibility[4] = (mask & 16) == 16;     // user
+  visibility[5] = (mask & 32) == 32;     // footer
+  visibility[6] = (mask & 64) == 64;     // right side tools
+  visibility[7] = (mask & 128) == 128;   // left side tools
+  visibility[8] = (mask & 256) == 256;   // bottom tools
+  visibility[9] = (mask & 512) == 512;   // extra bottom tools
+  visibility[10]= (mask & 1024) == 1024; // tab page bar
+  visibility[11]= (mask & 2048) == 2048; // auxiliary widget
+
+#ifdef OS_WASM
+  visibility[1]= false; // main
+  visibility[2]= false; // mode
+  visibility[3]= false; // focus
+  visibility[4]= false; // user
+  visibility[8]= false;
+#endif
+
+  // general setup for main window
+  QMainWindow* mw= mainwindow ();
+  if (tm_style_sheet == "") mw->setStyle (qtmstyle ());
+  // 复用的无边框窗口栏初始化逻辑
+  auto setupWindowBar= [this, mw] (QWK::WindowBar*&         outBar,
+                                   QWK::WidgetWindowAgent*& outAgent,
+                                   int minHeight, bool setSafeArea) {
+    outBar          = new QWK::WindowBar ();
+    outAgent        = new QWK::WidgetWindowAgent (mw);
+    tabPageContainer= new QTMTabPageContainer (outBar);
+    // 连接新增标签页按钮信号
+    QObject::connect (tabPageContainer, &QTMTabPageContainer::addTabRequested,
+                      [this] () { this->onAddTabRequested (); });
+    mw->setAttribute (Qt::WA_DontCreateNativeAncestors);
+    if (setSafeArea)
+      mw->setAttribute (Qt::WA_ContentsMarginsRespectsSafeArea, false);
+    outAgent->setup (mw);
+    outBar->setHostWidget (mw);
+    outBar->setMinimumHeight (minHeight);
+    outBar->setTitleWidget (tabPageContainer);
+    outBar->adjustSize ();
+    outBar->layout ()->setAlignment (tabPageContainer,
+                                     Qt::AlignLeft | Qt::AlignVCenter);
+    // 让标题栏子项（系统按钮等）垂直贴合高度：去掉间距与边距
+    if (outBar->layout ()) {
+      outBar->layout ()->setContentsMargins (0, 0, 0, 0);
+      outBar->layout ()->setSpacing (0);
+    }
+    outBar->setObjectName ("windowbar");
+    outAgent->setTitleBar (outBar);
+    mw->setMenuWidget (outBar);
+  };
+
+  double scale          = DpiUtils::scaleFactor ();
+  int    titleBarHeight = int (42 * scale);
+  int    buttonWidth    = int (60 * scale);
+  int    buttonHeight   = int (42 * scale);
+  int    vipbuttonWidth = int (90 * scale);
+  int    vipbuttonHeight= int (32 * scale);
+  int    iconBaseSize   = int (16 * scale);
+
+#if defined(Q_OS_MAC)
+  // 无边框布局（macOS）- 只显示登录按钮
+  Q_INIT_RESOURCE (styles);
+  QWK::WindowBar* windowBar= nullptr;
+  windowAgent              = nullptr;
+  setupWindowBar (windowBar, windowAgent, titleBarHeight, true);
+
+  if (windowBar && windowAgent) {
+    int nativeTitleBarHeight=
+        windowAgent->windowAttribute ("title-bar-height").toInt ();
+    if (nativeTitleBarHeight <= 0) nativeTitleBarHeight= titleBarHeight;
+
+    auto* sysBtnArea = new QWidget (windowBar);
+    int   sysBtnWidth= int (80 * scale);
+    sysBtnArea->setFixedSize (sysBtnWidth, nativeTitleBarHeight);
+    sysBtnArea->setObjectName ("system-button-area");
+
+    // Use a small fixed offset instead of vertical centering to match
+    // native macOS title-bar button placement more closely.
+    int yOffset= DpiUtils::scaled (1);
+    sysBtnArea->move (0, yOffset);
+
+    windowAgent->setSystemButtonArea (sysBtnArea);
+  }
+#elif defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+  // 无边框布局（Windows / Linux），并使用 /styles 资源中的图标
+  Q_INIT_RESOURCE (styles);
+  QWK::WindowBar* windowBar= nullptr;
+  windowAgent              = nullptr;
+  setupWindowBar (windowBar, windowAgent, /*minHeight*/ titleBarHeight,
+                  /*setSafeArea*/ false);
+  windowBar->setMinimumHeight (titleBarHeight);
+  windowBar->setFixedHeight (titleBarHeight);
+
+  // 系统按钮（图标来自 3rdparty/qwindowkitty/src/styles/styles.qrc）
+  auto pinBtn= new QWK::WindowButton (windowBar);
+  pinBtn->setCheckable (true);
+  pinBtn->setFlat (true);
+  pinBtn->setFocusPolicy (Qt::NoFocus);
+  pinBtn->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  pinBtn->setFixedSize (buttonWidth, buttonHeight);
+  pinBtn->setIconSize (QSize (iconBaseSize, iconBaseSize));
+  pinBtn->setIconNormal (QIcon (":/window-bar/pin.svg"));
+  pinBtn->setIconChecked (QIcon (":/window-bar/pin-fill.svg"));
+  pinBtn->setObjectName ("pin-button");
+  pinBtn->setProperty ("system-button", true);
+  windowBar->setPinButton (pinBtn);
+  if (windowAgent) {
+    windowAgent->setHitTestVisible (pinBtn, true);
+  }
+
+  auto minBtn= new QWK::WindowButton (windowBar);
+  minBtn->setFlat (true);
+  minBtn->setFocusPolicy (Qt::NoFocus);
+  minBtn->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  minBtn->setFixedSize (buttonWidth, buttonHeight);
+  minBtn->setIconSize (QSize (iconBaseSize, iconBaseSize));
+  minBtn->setIcon (QIcon (":/window-bar/minimize.svg"));
+  minBtn->setObjectName ("min-button");
+  minBtn->setProperty ("system-button", true);
+  windowBar->setMinButton (minBtn);
+  windowAgent->setSystemButton (QWK::WindowAgentBase::Minimize, minBtn);
+
+  auto maxBtn= new QWK::WindowButton (windowBar);
+  maxBtn->setCheckable (true);
+  maxBtn->setFlat (true);
+  maxBtn->setFocusPolicy (Qt::NoFocus);
+  maxBtn->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  maxBtn->setFixedSize (buttonWidth, buttonHeight);
+  maxBtn->setIconSize (QSize (iconBaseSize, iconBaseSize));
+  maxBtn->setIconNormal (QIcon (":/window-bar/maximize.svg"));
+  maxBtn->setIconChecked (QIcon (":/window-bar/restore.svg"));
+  maxBtn->setObjectName ("max-button");
+  maxBtn->setProperty ("system-button", true);
+  windowBar->setMaxButton (maxBtn);
+  windowAgent->setSystemButton (QWK::WindowAgentBase::Maximize, maxBtn);
+
+  auto closeBtn= new QWK::WindowButton (windowBar);
+  closeBtn->setFlat (true);
+  closeBtn->setFocusPolicy (Qt::NoFocus);
+  closeBtn->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  closeBtn->setFixedSize (buttonWidth, buttonHeight);
+  closeBtn->setIconSize (QSize (iconBaseSize, iconBaseSize));
+  closeBtn->setIcon (QIcon (":/window-bar/close.svg"));
+  closeBtn->setIconHovered (QIcon (":/window-bar/close-white.svg"));
+  closeBtn->setObjectName ("close-button");
+  closeBtn->setProperty ("system-button", true);
+  windowBar->setCloseButton (closeBtn);
+  windowAgent->setSystemButton (QWK::WindowAgentBase::Close, closeBtn);
+
+  // 按钮信号连接到窗口行为
+  QObject::connect (windowBar, &QWK::WindowBar::minimizeRequested, mw,
+                    [mw] () { mw->showMinimized (); });
+  QObject::connect (windowBar, &QWK::WindowBar::maximizeRequested, mw,
+                    [mw] (bool max) {
+                      if (max) {
+                        if (mw->isFullScreen ()) {
+                          mw->showNormal ();
+                        }
+                        mw->showMaximized ();
+                      }
+                      else {
+                        mw->showNormal ();
+                      }
+                    });
+  QObject::connect (windowBar, &QWK::WindowBar::closeRequested, mw,
+                    &QWidget::close);
+  QObject::connect (windowBar, &QWK::WindowBar::pinRequested, mw,
+                    [mw, pinBtn] (bool on) {
+                      mw->setWindowFlag (Qt::WindowStaysOnTopHint, on);
+                      mw->show ();
+                      pinBtn->setChecked (on);
+                    });
+#endif
+
+  // 登录按钮 - 作为最左边的自定义按钮
+  loginButton= new QWK::LoginButton (windowBar);
+
+  loginButton->setFlat (true);
+  loginButton->setFocusPolicy (Qt::NoFocus);
+  loginButton->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  loginButton->setFixedSize (buttonWidth, buttonHeight);
+  loginButton->setIconSize (QSize (iconBaseSize, iconBaseSize));
+  loginButton->setIconNormal (QIcon (":/window-bar/login.svg"));
+  loginButton->setObjectName ("login-button");
+  loginButton->setProperty ("system-button", true);
+  windowBar->setLoginButton (loginButton);
+  if (windowAgent) {
+    windowAgent->setHitTestVisible (loginButton, true);
+  }
+
+  if (is_community_stem ()) {
+    // 社区版：点击直接跳转官网，无状态变化，不显示文字
+    loginButton->setText (QString ());
+    loginButton->setToolTip (qt_translate ("User Center"));
+    loginButton->setAccessibleName (qt_translate ("User Center"));
+    QObject::connect (loginButton, &QWK::LoginButton::clicked, [this] () {
+      string pricingUrl=
+          as_string (call ("account-oauth2-config", "click-return-liii-url"));
+      QDesktopServices::openUrl (QUrl (to_qstring (pricingUrl)));
+    });
+  }
+  else {
+    // 商业版：完整登录功能
+    updateLoginButtonState (false);
+
+    m_loginDialog= new QWK::LoginDialog (mainwindow ());
+    setupLoginDialog (m_loginDialog);
+    QObject::connect (loginButton, &QWK::LoginButton::clicked,
+                      [this] () { checkLocalTokenAndLogin (); });
+  }
+
+  // VIP升级会员按钮 - 放在登录按钮左侧（只在商业版显示）
+  vipButton= new QPushButton (windowBar);
+  vipButton->setObjectName ("vip-button");
+  vipButton->setText (qt_translate ("Upgrade VIP"));
+  vipButton->setProperty ("system-button", true);
+  vipButton->setFocusPolicy (Qt::NoFocus);
+  vipButton->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  vipButton->setFixedSize (vipbuttonWidth, vipbuttonHeight);
+  vipButton->setCursor (Qt::PointingHandCursor);
+  vipButton->setStyleSheet (
+      QString ("QPushButton#vip-button { border-radius: %1px; font-size: %2px; "
+               "margin-right: %3px; }")
+          .arg (DpiUtils::scaled (12))
+          .arg (DpiUtils::scaled (12))
+          .arg (DpiUtils::scaled (4)));
+
+  // 设置闪电图标
+  vipButton->setIcon (QIcon (":/window-bar/vip-lightning.svg"));
+  vipButton->setIconSize (QSize (DpiUtils::scaled (20), DpiUtils::scaled (20)));
+
+  windowBar->setVipButton (vipButton);
+  if (windowAgent) {
+    windowAgent->setHitTestVisible (vipButton, true);
+  }
+
+  // 点击事件：跳转到会员购买页面（未登录时先触发登录）
+  QObject::connect (vipButton, &QPushButton::clicked, [this] () {
+    if (is_community_stem ()) {
+      string pricingUrl=
+          as_string (call ("account-oauth2-config", "click-return-liii-url"));
+      QDesktopServices::openUrl (QUrl (to_qstring (pricingUrl)));
+      return;
+    }
+
+    if (is_server_started ()) {
+      tm_server_rep* server=
+          dynamic_cast<tm_server_rep*> (get_server ().operator->());
+      if (server && server->getAccount () &&
+          server->getAccount ()->isLoggedIn ()) {
+#if !IS_COMMUNITY
+        telemetry_track ("VIP_CLICK", "'((\"mode\" . \"upgrade\"))");
+#endif
+        openRenewalPage ();
+      }
+      else {
+        checkLocalTokenAndLogin ();
+      }
+    }
+  });
+
+  // 初始设置VIP按钮可见性：商业版且（未登录或普通用户/体验会员）时显示
+  updateVipButtonVisibility (false, QString ());
+
+  // 创建 SCM 通知条容器（放在标题栏下方）
+  QWidget*     notificationContainer= new QWidget (mw);
+  QVBoxLayout* notificationLayout   = new QVBoxLayout (notificationContainer);
+  notificationLayout->setContentsMargins (0, 0, 0, 0);
+  notificationLayout->setSpacing (0);
+
+  // 初始化 SCM 提示条
+  scmNotificationBar= new QWK::NotificationBar ();
+  notificationLayout->addWidget (scmNotificationBar);
+  scmNotificationBar->hide ();
+
+  QObject::connect (
+      scmNotificationBar, &QWK::NotificationBar::closeRequested, [this] () {
+        eval ("(use-modules (texmacs menus notificationbar))");
+        bool handled= as_bool (call ("notification-bar-handle-close"));
+
+        if (!handled && scmNotificationBar) scmNotificationBar->hide ();
+      });
+  QObject::connect (scmNotificationBar, &QWK::NotificationBar::snoozeRequested,
+                    [this] () {
+                      eval ("(use-modules (texmacs menus notificationbar))");
+                      if (m_currentScmNotificationItem ==
+                          QStringLiteral ("membership-renew-soon")) {
+                        call ("notification-bar-snooze-membership-renew-soon");
+                      }
+                      else if (m_currentScmNotificationItem ==
+                               QStringLiteral ("membership")) {
+                        call ("notification-bar-snooze-membership-expired");
+                      }
+                    });
+  if (!is_community_stem ()) checkNetworkAvailable ();
+
+  // 延迟检查版本更新（启动后10秒）
+  QTimer::singleShot (10000, [this] () { checkVersionUpdate (); });
+
+  // there is a bug in the early implementation of toolbars in Qt 4.6
+  // which has been fixed in 4.6.2 (at least)
+  // this is why we change dimension of icons
+
+#if (defined(Q_OS_MAC) && (QT_VERSION >= QT_VERSION_CHECK(4, 6, 0)) &&         \
+     (QT_VERSION < QT_VERSION_CHECK(4, 6, 2)))
+  mw->setIconSize (QSize (22, 30));
+#else
+  mw->setIconSize (QSize (17, 17));
+#endif
+  mw->setFocusPolicy (Qt::NoFocus);
+
+  // status bar
+
+  QStatusBar* bar= new QStatusBar (mw);
+  bar->setObjectName ("statusBar");
+  leftLabel  = new QLabel (qt_translate ("Welcome to TeXmacs"), bar);
+  middleLabel= new QLabel ("", bar);
+  rightLabel = new QLabel (qt_translate ("Booting"), bar);
+  leftLabel->setFrameStyle (QFrame::NoFrame);
+  middleLabel->setFrameStyle (QFrame::NoFrame);
+  rightLabel->setFrameStyle (QFrame::NoFrame);
+  leftLabel->setIndent (8);
+  middleLabel->setAlignment (Qt::AlignCenter);
+
+  // Set alignment for left and right labels
+  leftLabel->setAlignment (Qt::AlignLeft | Qt::AlignVCenter);
+  rightLabel->setAlignment (Qt::AlignRight | Qt::AlignVCenter);
+
+  // Add all three labels with equal stretch factors for equal width
+  // distribution
+  bar->addWidget (leftLabel, 1);
+  bar->addWidget (middleLabel, 1);
+  bar->addPermanentWidget (rightLabel, 1);
+  if (tm_style_sheet == "") bar->setStyle (qtmstyle ());
+
+  // NOTE (mg): the following setMinimumWidth command disable automatic
+  // enlarging of the status bar and consequently of the main window due to
+  // long messages in the left label. I found this strange solution here
+  // http://www.archivum.info/qt-interest@trolltech.com/2007-05/01453/Re:-QStatusBar-size.html
+  // The solution if due to Martin Petricek. He adds:
+  //    The docs says: If minimumSize() is set, the minimum size hint will be
+  //    ignored. Probably the minimum size hint was size of the lengthy message
+  //    and internal layout was enlarging the satusbar and the main window Maybe
+  //    the notice about QLayout that is at minimumSizeHint should be also at
+  //    minimumSize, didn't notice it first time and spend lot of time trying to
+  //    figure this out :)
+
+  bar->setMinimumWidth (2);
+#ifdef Q_OS_LINUX
+  int min_h= (int) floor (28 * retina_scale);
+  bar->setMinimumHeight (min_h);
+#else
+#if (QT_VERSION >= 0x050000)
+  if (tm_style_sheet != "") {
+    int min_h= (int) floor (28 * retina_scale);
+    bar->setMinimumHeight (min_h);
+  }
+#else
+  double status_scale=
+      (((double) retina_icons) > retina_scale ? 1.5 : retina_scale);
+  if (status_scale > 1.0) {
+    int std_h= (os_mingw () ? 28 : 20);
+    int min_h= (int) floor (std_h * status_scale);
+    bar->setMinimumHeight (min_h);
+  }
+#endif
+#endif
+  mw->setStatusBar (bar);
+
+  // toolbars
+  menuToolBar    = new QToolBar ("menu toolbar", mw);
+  mainToolBar    = new QToolBar ("main toolbar", mw);
+  modeToolBar    = new QToolBar ("mode toolbar", mw);
+  focusToolBar   = new QToolBar ("focus toolbar", mw);
+  userToolBar    = new QToolBar ("user toolbar", mw);
+  bottomTools    = new QDockWidget ("bottom tools", mw);
+  extraTools     = new QDockWidget ("extra tools", mw);
+  sideTools      = new QDockWidget ("side tools", 0);
+  leftTools      = new QDockWidget ("left tools", 0);
+  auxiliaryWidget= new QTMAuxiliaryWidget ("auxiliary widget", 0);
+  // HACK: Wrap the dock in a "fake" window widget (last parameter = true) to
+  // have clicks report the right position.
+  static int cnt      = 0;
+  string     dock_name= "dock:" * as_string (cnt++);
+  dock_window_widget=
+      tm_new<qt_window_widget_rep> (sideTools, dock_name, command (), true);
+
+  if (tm_style_sheet == "") {
+    menuToolBar->setStyle (qtmstyle ());
+    mainToolBar->setStyle (qtmstyle ());
+    modeToolBar->setStyle (qtmstyle ());
+    focusToolBar->setStyle (qtmstyle ());
+    userToolBar->setStyle (qtmstyle ());
+    sideTools->setStyle (qtmstyle ());
+    leftTools->setStyle (qtmstyle ());
+    bottomTools->setStyle (qtmstyle ());
+    extraTools->setStyle (qtmstyle ());
+    auxiliaryWidget->setStyle (qtmstyle ());
+  }
+
+  {
+    // set proper sizes for icons
+    double scale= max (retina_scale, (double) retina_icons);
+    QSize  sz   = QSize (int (24 * scale), int (24 * scale));
+    tweak_iconbar_size (sz);
+    mainToolBar->setIconSize (sz);
+    sz= QSize (int (20 * scale), int (20 * scale));
+    tweak_iconbar_size (sz);
+    modeToolBar->setIconSize (sz);
+    sz= QSize (int (16 * scale), int (16 * scale));
+    tweak_iconbar_size (sz);
+    focusToolBar->setIconSize (sz);
+  }
+
+  // Why we need fixed height:
+  // The height of the toolbar is actually determined by the font height.
+  // And the font height is not fixed. If the height of the toolbar is not
+  // fixed, the stretching of it will make the document area floating and
+  // triggers the re-rendering of the full document.
+  //
+  // NOTICE: setFixedHeight must be after setIconSize
+  // TODO: the size of the toolbar should be calculated dynamically
+  {
+    int h           = DpiUtils::scaled (32);
+    int tabRowHeight= DpiUtils::scaled (38);
+
+    // 工具栏高度相等
+    mainToolBar->setFixedHeight (h);
+    modeToolBar->setFixedHeight (h);
+    focusToolBar->setFixedHeight (h);
+    tabPageContainer->setRowHeight (tabRowHeight);
+
+    // 保持可移动行为一致
+    mainToolBar->setMovable (true);
+    modeToolBar->setMovable (true);
+    focusToolBar->setMovable (true);
+    // menu栏不允许移动
+    menuToolBar->setMovable (false);
+  }
+
+  // PDF 工具栏（仅在 PDF 标签页模式下可见）
+  {
+    int h     = DpiUtils::scaled (32);
+    pdfToolBar= new PdfToolBar ("pdf toolbar", mw);
+    mw->addToolBar (pdfToolBar);
+    pdfToolBar->setIconSize (
+        QSize (DpiUtils::scaled (16), DpiUtils::scaled (16)));
+    pdfToolBar->setStyleSheet (
+        QString ("QToolBar#pdfToolBar { padding: 0px; margin: 0px; "
+                 "border: none; min-height: %1px; max-height: %1px; }")
+            .arg (h));
+    pdfToolBar->setVisible (false);
+  }
+
+  QWidget* cw= new QWidget ();
+  cw->setObjectName (
+      "centralWidget"); // this is important for styling toolbars.
+
+  // The main layout
+
+  QVBoxLayout* bl= new QVBoxLayout (cw);
+  bl->setContentsMargins (0, 0, 0, 0);
+  bl->setSpacing (0);
+  cw->setLayout (bl);
+  QWidget* q= main_widget->as_qwidget (); // force creation of QWidget
+  q->setObjectName ("editorCanvas");
+  q->setParent (
+      qwid); // q->layout()->removeWidget(q) will reset the parent to this
+  bl->addWidget (notificationContainer); // 添加 SCM 通知条容器
+  bl->addWidget (q);
+
+  mw->setCentralWidget (cw);
+
+  mainToolBar->setObjectName ("mainToolBar");
+  modeToolBar->setObjectName ("modeToolBar");
+  focusToolBar->setObjectName ("focusToolBar");
+  userToolBar->setObjectName ("userToolBar");
+  menuToolBar->setObjectName ("menuToolBar");
+  bottomTools->setObjectName ("bottomTools");
+  extraTools->setObjectName ("extraTools");
+  sideTools->setObjectName ("sideTools");
+  leftTools->setObjectName ("leftTools");
+  auxiliaryWidget->setObjectName ("auxiliaryWidget");
+
+#ifdef UNIFIED_TOOLBAR
+
+  if (use_unified_toolbar) {
+    mw->setUnifiedTitleAndToolBarOnMac (true);
+
+    // WARNING: dumbToolBar is the toolbar installed on the top area of the
+    // main widget which is  then unified in the title bar.
+    // to overcome some limitations of the unified toolbar implementation we
+    // install the real toolbars as widgets in this toolbar.
+
+    dumbToolBar= mw->addToolBar ("dumb toolbar");
+    dumbToolBar->setMinimumHeight (30);
+
+    // these are the actions related to the various toolbars to be installed in
+    // the dumb toolbar.
+
+    mainToolBarAction= dumbToolBar->addWidget (mainToolBar);
+    modeToolBarAction= NULL;
+
+    // A ruler
+    rulerWidget= new QWidget (cw);
+    rulerWidget->setSizePolicy (QSizePolicy::Ignored, QSizePolicy::Fixed);
+    rulerWidget->setMinimumHeight (1);
+    rulerWidget->setBackgroundRole (QPalette::Mid);
+    // FIXME: how to use 112 (active) and 146 (passive)
+    rulerWidget->setVisible (false);
+    rulerWidget->setAutoFillBackground (true);
+    // rulerWidget = new QLabel("pippo", cw);
+
+    // A second ruler (this one always visible) to separate from the canvas.
+    QWidget* r2= new QWidget (mw);
+    r2->setSizePolicy (QSizePolicy::Ignored, QSizePolicy::Fixed);
+    r2->setMinimumHeight (1);
+    r2->setBackgroundRole (QPalette::Mid);
+    r2->setVisible (true);
+    r2->setAutoFillBackground (true);
+
+    bl->insertWidget (0, menuToolBar);
+    bl->insertWidget (1, tabPageContainer);
+    bl->insertWidget (2, modeToolBar);
+    bl->insertWidget (3, rulerWidget);
+    bl->insertWidget (4, focusToolBar);
+    bl->insertWidget (5, userToolBar);
+    bl->insertWidget (6, r2);
+
+    // mw->setContentsMargins (-2, -2, -2, -2);  // Why this?
+    bar->setContentsMargins (0, 1, 0, 1);
+  }
+  else {
+    mw->addToolBar (menuToolBar);
+    mw->addToolBarBreak ();
+    mw->addToolBar (mainToolBar);
+    mw->addToolBarBreak ();
+    mw->addToolBar (modeToolBar);
+    mw->addToolBarBreak ();
+    mw->addToolBar (focusToolBar);
+    mw->addToolBarBreak ();
+    mw->addToolBar (userToolBar);
+    mw->addToolBarBreak ();
+  }
+
+#else
+  mw->addToolBar (menuToolBar);
+  mw->addToolBarBreak ();
+  mw->addToolBar (mainToolBar);
+  mw->addToolBarBreak ();
+  mw->addToolBar (modeToolBar);
+  mw->addToolBarBreak ();
+  mw->addToolBar (focusToolBar);
+  mw->addToolBarBreak ();
+  mw->addToolBar (userToolBar);
+  mw->addToolBarBreak ();
+#endif
+
+  sideTools->setAllowedAreas (Qt::AllDockWidgetAreas);
+  sideTools->setFeatures (QDockWidget::DockWidgetMovable |
+                          QDockWidget::DockWidgetFloatable);
+  sideTools->setFloating (false);
+  sideTools->setTitleBarWidget (new QWidget ()); // Disables title bar
+  mw->addDockWidget (Qt::RightDockWidgetArea, sideTools);
+
+  leftTools->setAllowedAreas (Qt::AllDockWidgetAreas);
+  leftTools->setFeatures (QDockWidget::DockWidgetMovable |
+                          QDockWidget::DockWidgetFloatable);
+  leftTools->setFloating (false);
+  leftTools->setTitleBarWidget (new QWidget ()); // Disables title bar
+  mw->addDockWidget (Qt::LeftDockWidgetArea, leftTools);
+
+  bottomTools->setAllowedAreas (Qt::BottomDockWidgetArea);
+  bottomTools->setFeatures (QDockWidget::NoDockWidgetFeatures);
+  bottomTools->setFloating (false);
+  bottomTools->setTitleBarWidget (new QWidget ()); // Disables title bar
+  // bottomTools->setMinimumHeight (10);             // Avoids warning
+  bottomTools->setContentsMargins (3, 6, 3, -2); // Hacks hacks hacks... :(
+  mw->addDockWidget (Qt::BottomDockWidgetArea, bottomTools);
+
+  extraTools->setAllowedAreas (Qt::BottomDockWidgetArea);
+  extraTools->setFeatures (QDockWidget::NoDockWidgetFeatures);
+  extraTools->setFloating (false);
+  extraTools->setTitleBarWidget (new QWidget ()); // Disables title bar
+  // extraTools->setMinimumHeight (10);             // Avoids warning
+  extraTools->setContentsMargins (3, 6, 3, -2); // Hacks hacks hacks... :(
+  mw->addDockWidget (Qt::BottomDockWidgetArea, extraTools);
+
+  auxiliaryWidget->setAllowedAreas (Qt::RightDockWidgetArea);
+  // auxiliaryWidget->setFeatures (QDockWidget::DockWidgetMovable |
+  //                        QDockWidget::DockWidgetFloatable);
+  auxiliaryWidget->setFloating (false);
+  // auxiliaryWidget->setTitleBarWidget (new QWidget ()); // Disables title bar
+  mw->addDockWidget (Qt::RightDockWidgetArea, auxiliaryWidget);
+
+  // 统一为所有 dock 分隔线添加可视边框
+  int borderWidth= DpiUtils::scaled (1);
+  mw->setStyleSheet (mw->styleSheet () +
+                     QString ("QMainWindow::separator { "
+                              "border-left: %1px solid rgba(0,0,0,0.12); }")
+                         .arg (borderWidth));
+
+  // AI 聊天侧边栏 Dock（community 版不创建，保持 nullptr，
+  // 下游所有 if (chatSideDock) 判空即自动跳过）
+  if (!is_community_stem ()) {
+    chatSideDock= new QDockWidget ("AI Chat Sidebar", mw);
+    chatSideDock->setObjectName ("chatSideDock");
+    chatSideDock->setAllowedAreas (Qt::RightDockWidgetArea);
+    chatSideDock->setFeatures (QDockWidget::DockWidgetClosable);
+    chatSideDock->setFloating (false);
+    chatSideDock->setTitleBarWidget (new QWidget ()); // 禁用标题栏
+    chatSideDock->setMinimumSize (DpiUtils::scaled (320), 0);
+    chatSideDock->setVisible (false);
+    mw->addDockWidget (Qt::RightDockWidgetArea, chatSideDock);
+
+    // 文档区域右上角浮动新建对话按钮
+    chatSidebarToggleBtn= new QPushButton (cw);
+    chatSidebarToggleBtn->setObjectName ("chat-tab-collapse-btn");
+    chatSidebarToggleBtn->setFocusPolicy (Qt::NoFocus);
+    chatSidebarToggleBtn->setCursor (Qt::PointingHandCursor);
+    chatSidebarToggleBtn->setIcon (QIcon (":llm-chat/addchat.svg"));
+    chatSidebarToggleBtn->setIconSize (
+        QSize (DpiUtils::scaled (20), DpiUtils::scaled (20)));
+    chatSidebarToggleBtn->setFixedSize (DpiUtils::scaled (40),
+                                        DpiUtils::scaled (40));
+    chatSidebarToggleBtn->setStyleSheet (
+        QString ("QPushButton { border: none; border-radius: %1px; }")
+            .arg (DpiUtils::scaled (20)));
+    chatSidebarToggleBtn->hide ();
+
+    // 使用 QObject 辅助类处理 central widget 的 resize 事件以更新按钮位置
+    class ChatSidebarBtnPositioner : public QObject {
+    public:
+      ChatSidebarBtnPositioner (QPushButton* btn, QWidget* parent,
+                                qt_tm_widget_rep* widget)
+          : QObject (parent), button_ (btn), parent_ (parent),
+            widget_ (widget) {}
+      bool eventFilter (QObject* obj, QEvent* event) override {
+        if (obj == parent_ && event->type () == QEvent::Resize) {
+          widget_->position_chat_sidebar_button ();
+        }
+        return QObject::eventFilter (obj, event);
+      }
+
+    private:
+      QPushButton*      button_;
+      QWidget*          parent_;
+      qt_tm_widget_rep* widget_;
+    };
+    cw->installEventFilter (
+        new ChatSidebarBtnPositioner (chatSidebarToggleBtn, cw, this));
+
+    QObject::connect (chatSidebarToggleBtn, &QPushButton::clicked, [this] () {
+      chatSidebarMode       = !chatSidebarMode;
+      chatSidebarModeMemory_= chatSidebarMode;
+      sync_chat_sidebar_mode ();
+    });
+  }
+
+  // FIXME? add DockWidgetClosable and connect the close signal
+  // to the scheme code
+  //  QObject::connect(sideDock, SIGNAL(closeEvent()),
+  //                   someHelper, SLOT(call_scheme_hide_side_tools()));
+
+  // handles visibility
+  // at this point all the toolbars are empty so we avoid showing them
+  // same for the menu bar if we are not on the Mac (where we do not have
+  // other options)
+
+  mainToolBar->setVisible (false);
+  modeToolBar->setVisible (false);
+  focusToolBar->setVisible (false);
+  userToolBar->setVisible (false);
+  menuToolBar->setVisible (false);
+  sideTools->setVisible (false);
+  leftTools->setVisible (false);
+  bottomTools->setVisible (false);
+  extraTools->setVisible (false);
+  auxiliaryWidget->setVisible (false);
+  mainwindow ()->statusBar ()->setVisible (true);
+  QPalette pal;
+  QColor   bgcol= to_qcolor (tm_background);
+  pal.setColor (QPalette::Mid, bgcol);
+  mainwindow ()->setPalette (pal);
+
+  // 强制刷新一次可见性状态，确保浮动按钮等控件初始状态正确
+  update_visibility ();
+
+  // 连接登录状态变化信号
+  if (is_server_started ()) {
+    tm_server_rep* server=
+        dynamic_cast<tm_server_rep*> (get_server ().operator->());
+    if (server && server->getAccount ()) {
+      QTMOAuth* account= server->getAccount ();
+      // 商业版：连接登录状态变化信号
+      if (!is_community_stem ()) {
+        QObject::connect (
+            account, &QTMOAuth::loginStateChanged, [this] (bool loggedIn) {
+              updateLoginButtonState (loggedIn,
+                                      loggedIn ? qt_translate ("User Center")
+                                               : QString ());
+              if (loggedIn) {
+                syncScmGuestNotification (false);
+                refreshMembershipInfoInBackground ();
+              }
+              else {
+                syncScmMembershipNotification (false);
+                checkNetworkAvailable ();
+              }
+            });
+        updateLoginButtonState (
+            account->isLoggedIn (),
+            account->isLoggedIn () ? qt_translate ("User Center") : QString ());
+        if (account->isLoggedIn ()) {
+          refreshMembershipInfoInBackground ();
+        }
+      }
+    }
+  }
+  else {
+    std_error << "qt_tm_widget_rep: server not started, cannot connect ";
+  }
+}
+
+qt_tm_widget_rep::~qt_tm_widget_rep () {
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep::~qt_tm_widget_rep of widget "
+                  << type_as_string () << LF;
+
+  // clear any residual waiting menu installation
+  waiting_widgets= remove (waiting_widgets, this);
+
+  // delete startup content widget
+  if (startupContentWidget) {
+    delete startupContentWidget;
+  }
+
+  // delete pdf viewer widget
+  if (pdfViewerWidget) {
+    delete pdfViewerWidget;
+  }
+  /// 清理聊天侧边栏 dock 中的 widget 引用，避免悬垂
+  if (chatSideDock) {
+    chatSideDock->setWidget (nullptr);
+  }
+  /// delete chat content widget
+  if (chatContentWidget) {
+    delete chatContentWidget;
+  }
+}
+
+void
+qt_tm_widget_rep::tweak_iconbar_size (QSize& sz) {
+#ifdef Q_OS_LINUX
+  if (sz.height () >= 24) {
+    sz.setWidth (sz.width () + 2);
+    sz.setHeight (sz.height () + 8);
+  }
+  else if (sz.height () >= 20) {
+    sz.setWidth (sz.width () + 1);
+    sz.setHeight (sz.height () + 4);
+  }
+  else if (sz.height () >= 16) {
+    sz.setHeight (sz.height () + 4);
+  }
+#else
+  if (sz.height () >= 24) {
+    sz.setWidth (sz.width () + 2);
+    sz.setHeight (sz.height () + 6);
+  }
+  else if (sz.height () >= 20) {
+    sz.setHeight (sz.height () + 2);
+  }
+  else if (sz.height () >= 16) {
+    sz.setHeight (sz.height () + 2);
+  }
+#endif
+  // sz.setHeight ((int) floor (sz.height () * retina_scale + 0.5));
+}
+
+/*! Return ourselves as a window widget.
+ \param name A unique identifier for the window (e.g. "TeXmacs:3")
+ */
+widget
+qt_tm_widget_rep::plain_window_widget (string name, command _quit, int b) {
+  (void) b;
+  (void) _quit; // The widget already has a command. Don't overwrite.
+  orig_name= name;
+  return this;
+}
+
+// Helper functions to show/hide widgets in layout
+static void
+show_widget_in_layout (QWidget* widget, QLayout* layout) {
+  if (!widget || !layout) return;
+  int index= layout->indexOf (widget);
+  if (index >= 0 && widget->isVisible ()) return;
+  if (index < 0) {
+    layout->addWidget (widget);
+  }
+  widget->show ();
+}
+
+static void
+hide_widget_from_layout (QWidget* widget, QLayout* layout) {
+  if (!widget || !layout) return;
+  widget->hide ();
+  if (layout->indexOf (widget) >= 0) {
+    layout->removeWidget (widget);
+  }
+}
+
+void
+qt_tm_widget_rep::set_central_widget_updates_frozen (bool frozen) {
+  QWidget* cw= centralwidget ();
+  if (!cw || centralWidgetUpdatesFrozen_ == frozen) return;
+
+  centralWidgetUpdatesFrozen_= frozen;
+  cw->setUpdatesEnabled (!frozen);
+  if (!frozen) {
+    if (cw->layout ()) cw->layout ()->invalidate ();
+    cw->update ();
+  }
+}
+
+void
+qt_tm_widget_rep::sync_startup_tab_mode () {
+  QWidget* editorWidget= main_widget->qwid;
+  QLayout* layout      = centralwidget ()->layout ();
+  if (!layout) return;
+
+  bool hasActiveView= !is_none (get_current_view_safe ());
+
+  // Auto-enable startup mode when no active view or no editor widget
+  if (!hasActiveView || editorWidget == nullptr) {
+    startupTabMode= true;
+  }
+
+  if (startupTabMode) {
+    // Show Backstage/Startup view
+    // 进入首页前保存并关闭 dock
+    if (chatSidebarMode) {
+      chatSidebarModeMemory_= true;
+      chatSidebarMode       = false;
+      sync_chat_sidebar_mode ();
+    }
+
+    hide_widget_from_layout (editorWidget, layout);
+    hide_widget_from_layout (pdfViewerWidget, layout);
+    hide_widget_from_layout (chatContentWidget, layout);
+
+    // Disconnect toolbar when leaving PDF mode
+    pdfToolBar->disconnectFrom ();
+
+    update_visibility ();
+
+    if (!startupContentWidget) {
+      startupContentWidget= new QTMStartupTabWidget (centralwidget ());
+    }
+    show_widget_in_layout (startupContentWidget, layout);
+    startupContentWidget->setFocus (Qt::OtherFocusReason);
+  }
+  else if (pdfTabMode) {
+    // Show PDF viewer
+    hide_widget_from_layout (editorWidget, layout);
+    hide_widget_from_layout (startupContentWidget, layout);
+    hide_widget_from_layout (chatContentWidget, layout);
+
+    update_visibility ();
+
+    if (!pdfViewerWidget) {
+      pdfViewerWidget= new PDFReaderWidget (centralwidget ());
+    }
+    show_widget_in_layout (pdfViewerWidget, layout);
+    pdfViewerWidget->setFocus (Qt::OtherFocusReason);
+
+    // Connect toolbar to the PDF reader
+    pdfToolBar->connectTo (pdfViewerWidget);
+
+    // Load PDF if path changed
+    if (!currentPdfPath.isEmpty () && currentPdfPath != lastLoadedPdfPath) {
+      pdfViewerWidget->loadFromFile (currentPdfPath);
+      lastLoadedPdfPath= currentPdfPath;
+    }
+  }
+  else {
+    // Show normal editor view (unless chat tab mode is active)
+    hide_widget_from_layout (startupContentWidget, layout);
+    hide_widget_from_layout (pdfViewerWidget, layout);
+
+    // Disconnect toolbar when leaving PDF mode
+    pdfToolBar->disconnectFrom ();
+
+    if (!chatTabMode) {
+      show_widget_in_layout (editorWidget, layout);
+
+      update_visibility ();
+
+      if (scrollarea ())
+        scrollarea ()->surface ()->setSizePolicy (QSizePolicy::Fixed,
+                                                  QSizePolicy::Fixed);
+      url currentView= get_current_view_safe ();
+      if (!is_none (currentView)) send_keyboard_focus (abstract (main_widget));
+    }
+    // 从首页切回文档时恢复 dock（Chat 标签页模式下不恢复，由 sync_chat_tab_mode
+    // 处理）
+    if (chatSidebarModeMemory_ && !chatSidebarMode && !chatTabMode) {
+      chatSidebarMode= true;
+      sync_chat_sidebar_mode ();
+    }
+  }
+}
+
+/**
+ * @brief 同步聊天标签页控件的可见性。
+ *
+ * 当 \ref chatTabMode 激活时，隐藏编辑器、启动页和 PDF
+ * 阅读器，然后显示 \ref chatContentWidget（按需创建）。
+ * 否则隐藏聊天控件，并在启动标签页模式未激活时恢复普通编辑器视图。
+ */
+void
+qt_tm_widget_rep::sync_chat_tab_mode () {
+  // community 版不含 Chat 标签页，直接返回
+  if (is_community_stem ()) return;
+  QWidget* editorWidget= main_widget->qwid;
+  QLayout* layout      = centralwidget ()->layout ();
+  if (!layout) return;
+
+  if (chatTabMode) {
+    // Show Chat tab view
+    // 如果之前处于侧边栏模式，先关闭（记住用户选择，切回时恢复）
+    if (chatSidebarMode) {
+      chatSidebarModeMemory_= true;
+      chatSidebarMode       = false;
+      if (chatSideDock && chatContentWidget &&
+          chatSideDock->widget () == chatContentWidget) {
+        chatSideDock->setWidget (nullptr);
+        chatContentWidget->setParent (centralwidget ());
+        // 恢复内部对话列表显示（全屏模式需要），
+        // 尊重用户记忆的侧边栏展开/收缩状态
+        QTChatTabWidget* chatWidget=
+            qobject_cast<QTChatTabWidget*> (chatContentWidget);
+        if (chatWidget) {
+          // 先从 dock 模式的隐藏状态恢复，再根据用户记忆的状态设置
+          chatWidget->setSidebarVisible (true);
+          chatWidget->setSidebarCollapsed (
+              QTChatTabWidget::globalSidebarCollapsed ());
+          chatWidget->setCloseSidebarButtonVisible (false);
+        }
+      }
+      if (chatSideDock) chatSideDock->hide ();
+    }
+
+    hide_widget_from_layout (editorWidget, layout);
+    hide_widget_from_layout (startupContentWidget, layout);
+    hide_widget_from_layout (pdfViewerWidget, layout);
+
+    update_visibility ();
+
+    if (!chatContentWidget) {
+      chatContentWidget=
+          get_chat_controller ()->createView (centralwidget (), this);
+    }
+    show_widget_in_layout (chatContentWidget, layout);
+    chatContentWidget->setFocus (Qt::OtherFocusReason);
+  }
+  else {
+    // Show normal editor view only when no special tab mode is active
+    hide_widget_from_layout (chatContentWidget, layout);
+    if (!startupTabMode && !pdfTabMode) {
+      show_widget_in_layout (editorWidget, layout);
+
+      update_visibility ();
+
+      if (scrollarea ())
+        scrollarea ()->surface ()->setSizePolicy (QSizePolicy::Fixed,
+                                                  QSizePolicy::Fixed);
+      url currentView= get_current_view_safe ();
+      if (!is_none (currentView)) send_keyboard_focus (abstract (main_widget));
+    }
+    // 如果用户之前主动打开了侧边栏，从 Chat 标签页切回时恢复
+    // 注意：从首页切回时由 sync_startup_tab_mode() 负责恢复，这里不再重复处理
+    if (chatSidebarModeMemory_ && !chatSidebarMode && !startupTabMode) {
+      chatSidebarMode= true;
+      sync_chat_sidebar_mode ();
+    }
+  }
+}
+
+void
+qt_tm_widget_rep::position_chat_sidebar_button () {
+  if (!chatSidebarToggleBtn || !centralwidget ()) return;
+  QWidget* cw         = centralwidget ();
+  int      topMargin  = DpiUtils::scaled (12);
+  int      rightMargin= DpiUtils::scaled (20);
+  int      btnSize    = chatSidebarToggleBtn->width ();
+  int      cwW        = cw->width ();
+  int      cwH        = cw->height ();
+  if (cwW <= 0 || cwH <= 0) return; // 窗口尚未就绪
+  int x= cwW - btnSize - rightMargin;
+  int y= topMargin;
+  chatSidebarToggleBtn->move (x, y);
+}
+
+/**
+ * @brief 同步 AI 聊天侧边栏模式的可见性。
+ *
+ * 当 \ref chatSidebarMode 激活时，将 \ref chatContentWidget 放入右侧
+ * Dock 中显示，同时保持编辑器或 PDF 阅读器可见。
+ * 与 \ref chatTabMode 互斥。
+ */
+void
+qt_tm_widget_rep::sync_chat_sidebar_mode () {
+  // community 版未创建 chatSideDock，直接返回，避免空指针解引用
+  // （scheme 侧的 "std j" 仍可能写入 SLOT_CHAT_SIDEBAR_VISIBILITY 触发本函数）
+  if (is_community_stem ()) return;
+  QWidget* editorWidget= main_widget->qwid;
+  QLayout* layout      = centralwidget ()->layout ();
+  if (!layout) return;
+
+  if (chatSidebarMode) {
+    // 确保不与全屏聊天模式同时存在
+    if (chatTabMode) {
+      chatTabMode= false;
+      sync_chat_tab_mode ();
+    }
+
+    // AI 侧边栏与辅助窗口共用右侧 dock 区域；打开 AI 侧边栏时，
+    // 也要同步关闭辅助窗口，避免两个 dock 纵向堆叠。
+    if (visibility[11] && auxiliaryWidget && auxiliaryWidget->isVisible ()) {
+      visibility[11]= false;
+      auxiliaryWidget->close ();
+    }
+
+    // 确保聊天控件已创建
+    if (!chatContentWidget) {
+      chatContentWidget=
+          get_chat_controller ()->createView (centralwidget (), this);
+    }
+
+    // 如果控件当前在中央布局中，先移除
+    if (layout->indexOf (chatContentWidget) >= 0) {
+      hide_widget_from_layout (chatContentWidget, layout);
+    }
+
+    // 放入侧边栏 dock
+    if (chatSideDock->widget () != chatContentWidget) {
+      chatContentWidget->setParent (chatSideDock);
+      chatSideDock->setWidget (chatContentWidget);
+    }
+
+    // 侧边栏模式：只显示对话区域，隐藏内部对话列表
+    QTChatTabWidget* chatWidget=
+        qobject_cast<QTChatTabWidget*> (chatContentWidget);
+    if (chatWidget) {
+      chatWidget->setSidebarVisible (false);
+      chatWidget->setCloseSidebarButtonVisible (true);
+      // 连接关闭按钮信号（先断开所有旧连接，避免重复触发）
+      QObject::disconnect (chatWidget, &QTChatTabWidget::closeSidebarRequested,
+                           nullptr, nullptr);
+      QObject::connect (chatWidget, &QTChatTabWidget::closeSidebarRequested,
+                        [this] () {
+                          chatSidebarMode       = false;
+                          chatSidebarModeMemory_= false;
+                          sync_chat_sidebar_mode ();
+                        });
+    }
+
+    chatSideDock->show ();
+    chatContentWidget->show ();
+    // 焦点切到聊天输入框
+    if (chatWidget && chatWidget->activeConversation ()) {
+      chatWidget->activeConversation ()->focusInput ();
+    }
+    else {
+      chatContentWidget->setFocus (Qt::OtherFocusReason);
+    }
+
+    // 设置 dock 宽度为屏幕宽度的 1/3
+    QMainWindow* mw= mainwindow ();
+    if (mw) {
+      int dockWidth= qMax (DpiUtils::scaled (280), mw->width () / 3);
+      mw->resizeDocks ({chatSideDock}, {dockWidth}, Qt::Horizontal);
+    }
+
+    // 确保编辑器或 PDF 阅读器可见
+    if (startupTabMode) {
+      hide_widget_from_layout (editorWidget, layout);
+      hide_widget_from_layout (pdfViewerWidget, layout);
+    }
+    else if (pdfTabMode) {
+      hide_widget_from_layout (editorWidget, layout);
+      show_widget_in_layout (pdfViewerWidget, layout);
+    }
+    else {
+      hide_widget_from_layout (pdfViewerWidget, layout);
+      show_widget_in_layout (editorWidget, layout);
+    }
+  }
+  else {
+    // 隐藏侧边栏 dock
+    if (chatSideDock) chatSideDock->hide ();
+
+    // 如果控件在 dock 中，先移回中央 widget（隐藏状态）
+    if (chatContentWidget && chatSideDock &&
+        chatSideDock->widget () == chatContentWidget) {
+      chatSideDock->setWidget (nullptr);
+      chatContentWidget->setParent (centralwidget ());
+      // 不加入布局，保持隐藏
+      chatContentWidget->hide ();
+
+      // 恢复内部对话列表显示（全屏模式需要），
+      // 尊重用户记忆的侧边栏展开/收缩状态
+      QTChatTabWidget* chatWidget=
+          qobject_cast<QTChatTabWidget*> (chatContentWidget);
+      if (chatWidget) {
+        // 先从 dock 模式的隐藏状态恢复，再根据用户记忆的状态设置
+        chatWidget->setSidebarVisible (true);
+        chatWidget->setSidebarCollapsed (
+            QTChatTabWidget::globalSidebarCollapsed ());
+        chatWidget->setCloseSidebarButtonVisible (false);
+      }
+    }
+
+    // 恢复焦点到当前可见的编辑器或 PDF 阅读器
+    if (pdfTabMode && pdfViewerWidget)
+      pdfViewerWidget->setFocus (Qt::OtherFocusReason);
+    else if (editorWidget) editorWidget->setFocus (Qt::OtherFocusReason);
+  }
+
+  update_visibility ();
+}
+
+void
+qt_tm_widget_rep::update_visibility () {
+#define XOR(exp1, exp2) (((!exp1) && (exp2)) || ((exp1) && (!exp2)))
+
+  bool old_mainVisibility  = mainToolBar->isVisible ();
+  bool old_menuVisibility  = menuToolBar->isVisible ();
+  bool old_modeVisibility  = modeToolBar->isVisible ();
+  bool old_focusVisibility = focusToolBar->isVisible ();
+  bool old_userVisibility  = userToolBar->isVisible ();
+  bool old_sideVisibility  = sideTools->isVisible ();
+  bool old_leftVisibility  = leftTools->isVisible ();
+  bool old_bottomVisibility= bottomTools->isVisible ();
+  bool old_extraVisibility = extraTools->isVisible ();
+  bool old_auxVisibility   = auxiliaryWidget->isVisible ();
+  bool old_tabVisibility=
+      tabPageContainer ? tabPageContainer->isVisible () : false;
+  bool old_statusVisibility    = mainwindow ()->statusBar ()->isVisible ();
+  bool old_titleVisibility     = windowAgent->titleBar ()->isVisible ();
+  bool old_pdfToolBarVisibility= pdfToolBar->isVisible ();
+
+  bool new_mainVisibility      = visibility[1] && visibility[0];
+  bool new_menuVisibility      = visibility[0];
+  bool new_modeVisibility      = visibility[2] && visibility[0];
+  bool new_focusVisibility     = visibility[3] && visibility[0];
+  bool new_userVisibility      = visibility[4] && visibility[0];
+  bool new_statusVisibility    = visibility[5];
+  bool new_sideVisibility      = visibility[6];
+  bool new_leftVisibility      = visibility[7];
+  bool new_bottomVisibility    = visibility[8];
+  bool new_extraVisibility     = visibility[9];
+  bool new_tabVisibility       = visibility[10] && visibility[0];
+  bool new_auxVisibility       = visibility[11];
+  bool new_titleVisibility     = visibility[0];
+  bool new_pdfToolBarVisibility= false;
+
+  if (startupTabMode) {
+    new_mainVisibility  = false;
+    new_menuVisibility  = false;
+    new_modeVisibility  = false;
+    new_focusVisibility = false;
+    new_userVisibility  = false;
+    new_statusVisibility= false;
+    new_sideVisibility  = false;
+    new_leftVisibility  = false;
+    new_bottomVisibility= false;
+    new_extraVisibility = false;
+    new_auxVisibility   = false;
+    new_tabVisibility   = true;
+    new_titleVisibility = true;
+  }
+
+  if (chatTabMode) {
+    new_mainVisibility  = false;
+    new_menuVisibility  = false;
+    new_modeVisibility  = true;
+    new_focusVisibility = false;
+    new_userVisibility  = false;
+    new_statusVisibility= false;
+    new_sideVisibility  = false;
+    new_leftVisibility  = false;
+    new_bottomVisibility= false;
+    new_extraVisibility = false;
+    new_auxVisibility   = false;
+    new_tabVisibility   = true;
+    new_titleVisibility = true;
+  }
+
+  if (pdfTabMode) {
+    new_mainVisibility      = false;
+    new_menuVisibility      = false;
+    new_modeVisibility      = false;
+    new_focusVisibility     = false;
+    new_userVisibility      = false;
+    new_statusVisibility    = false;
+    new_sideVisibility      = false;
+    new_leftVisibility      = false;
+    new_bottomVisibility    = false;
+    new_extraVisibility     = false;
+    new_auxVisibility       = false;
+    new_tabVisibility       = true;
+    new_titleVisibility     = true;
+    new_pdfToolBarVisibility= true;
+  }
+  if (XOR (old_mainVisibility, new_mainVisibility)) {
+    mainToolBar->setVisible (new_mainVisibility);
+  }
+  if (XOR (old_menuVisibility, new_menuVisibility)) {
+    menuToolBar->setVisible (new_menuVisibility);
+  }
+  if (XOR (old_modeVisibility, new_modeVisibility)) {
+    modeToolBar->setVisible (new_modeVisibility);
+  }
+  if (XOR (old_focusVisibility, new_focusVisibility)) {
+    focusToolBar->setVisible (new_focusVisibility);
+  }
+  if (XOR (old_userVisibility, new_userVisibility)) {
+    userToolBar->setVisible (new_userVisibility);
+  }
+  if (XOR (old_sideVisibility, new_sideVisibility))
+    sideTools->setVisible (new_sideVisibility);
+  if (XOR (old_leftVisibility, new_leftVisibility))
+    leftTools->setVisible (new_leftVisibility);
+  if (XOR (old_bottomVisibility, new_bottomVisibility))
+    bottomTools->setVisible (new_bottomVisibility);
+  if (XOR (old_extraVisibility, new_extraVisibility))
+    extraTools->setVisible (new_extraVisibility);
+  if (XOR (old_auxVisibility, new_auxVisibility))
+    auxiliaryWidget->setVisible (new_auxVisibility);
+  if (tabPageContainer && XOR (old_tabVisibility, new_tabVisibility))
+    tabPageContainer->setVisible (new_tabVisibility);
+  if (XOR (old_titleVisibility, new_titleVisibility))
+    windowAgent->titleBar ()->setVisible (new_titleVisibility);
+  if (XOR (old_statusVisibility, new_statusVisibility)) {
+    mainwindow ()->statusBar ()->setVisible (new_statusVisibility);
+  }
+  if (XOR (old_pdfToolBarVisibility, new_pdfToolBarVisibility)) {
+    pdfToolBar->setVisible (new_pdfToolBarVisibility);
+  }
+
+  // AI 聊天侧边栏浮动按钮可见性
+  if (chatSidebarToggleBtn) {
+    bool shouldShow= !chatTabMode && !chatSidebarMode && !startupTabMode;
+    chatSidebarToggleBtn->setVisible (shouldShow);
+    if (shouldShow) {
+      chatSidebarToggleBtn->raise ();
+      position_chat_sidebar_button ();
+      // 动态 tooltip：已有会话时显示 "Open AI Chat"，否则显示 "New AI Chat"
+      ChatController* ctrl       = get_chat_controller ();
+      bool            hasSessions= ctrl->sessionManager ().sessionCount () > 0;
+#ifdef Q_OS_MACOS
+      QString shortcutHint= " (\xe2\x8c\x98"
+                            "J)";
+#else
+      QString shortcutHint= " (Ctrl+J)";
+#endif
+      chatSidebarToggleBtn->setToolTip ((hasSessions
+                                             ? qt_translate ("Open AI Chat")
+                                             : qt_translate ("New AI Chat")) +
+                                        shortcutHint);
+    }
+  }
+
+// #if 0
+#ifdef UNIFIED_TOOLBAR
+
+  // do modifications only if needed to reduce flicker
+  if (use_unified_toolbar && (XOR (old_mainVisibility, new_mainVisibility) ||
+                              XOR (old_modeVisibility, new_modeVisibility))) {
+    // ensure that the topmost visible toolbar is always unified on Mac
+    // (actually only for main and mode toolbars, unifying focus is not
+    // appropriate)
+
+    QBoxLayout* bl=
+        qobject_cast<QBoxLayout*> (mainwindow ()->centralWidget ()->layout ());
+
+    if (modeToolBarAction)
+      modeToolBarAction->setVisible (modeToolBar->isVisible ());
+    mainToolBarAction->setVisible (mainToolBar->isVisible ());
+
+    // WARNING: jugglying around bugs in Qt unified toolbar implementation
+    // do not try to change the order of the following operations....
+
+    if (mainToolBar->isVisible ()) {
+      bool tmp= modeToolBar->isVisible ();
+      dumbToolBar->removeAction (modeToolBarAction);
+      dumbToolBar->addAction (mainToolBarAction);
+      bl->insertWidget (0, rulerWidget);
+      bl->insertWidget (0, modeToolBar);
+      mainToolBarAction->setVisible (true);
+      rulerWidget->setVisible (true);
+      modeToolBar->setVisible (tmp);
+      if (modeToolBarAction) modeToolBarAction->setVisible (tmp);
+      dumbToolBar->setVisible (true);
+    }
+    else {
+      dumbToolBar->removeAction (mainToolBarAction);
+      if (modeToolBar->isVisible ()) {
+        bl->removeWidget (rulerWidget);
+        rulerWidget->setVisible (false);
+        bl->removeWidget (modeToolBar);
+        if (modeToolBarAction == NULL) {
+          modeToolBarAction= dumbToolBar->addWidget (modeToolBar);
+        }
+        else {
+          dumbToolBar->addAction (modeToolBarAction);
+        }
+        dumbToolBar->setVisible (true);
+      }
+      else {
+        dumbToolBar->setVisible (false);
+        dumbToolBar->removeAction (modeToolBarAction);
+      }
+    }
+  }
+#endif // UNIFIED_TOOLBAR
+#undef XOR
+  if (tm_style_sheet == "" && use_mini_bars) {
+    QFont f = leftLabel->font ();
+    int   fs= as_int (get_preference ("gui:mini-fontsize", QTM_MINI_FONTSIZE));
+    f.setPointSize (qt_zoom (fs > 0 ? fs : QTM_MINI_FONTSIZE));
+    leftLabel->setFont (f);
+    rightLabel->setFont (f);
+  }
+}
+
+widget
+qt_tm_widget_rep::read (slot s, blackbox index) {
+  widget ret;
+
+  switch (s) {
+  case SLOT_CANVAS:
+    check_type_void (index, s);
+    ret= abstract (main_widget);
+    break;
+
+  default:
+    return qt_window_widget_rep::read (s, index);
+  }
+
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep::read " << slot_name (s)
+                  << "\t\tfor widget\t" << type_as_string () << LF;
+
+  return ret;
+}
+
+void
+qt_tm_widget_rep::send (slot s, blackbox val) {
+  switch (s) {
+  case SLOT_INVALIDATE:
+  case SLOT_INVALIDATE_ALL:
+  case SLOT_EXTENTS:
+  case SLOT_SCROLL_POSITION:
+  case SLOT_ZOOM_FACTOR:
+  case SLOT_MOUSE_GRAB:
+    main_widget->send (s, val);
+    return;
+  case SLOT_KEYBOARD_FOCUS: {
+    check_type<bool> (val, s);
+    bool focus= open_box<bool> (val);
+    if (focus && canvas () && !canvas ()->hasFocus ())
+      canvas ()->setFocus (Qt::OtherFocusReason);
+  } break;
+  case SLOT_HEADER_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[0]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_MAIN_ICONS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[1]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_MODE_ICONS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[2]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_FOCUS_ICONS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[3]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_USER_ICONS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[4]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+
+  case SLOT_FOOTER_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[5]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_SIDE_TOOLS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[6]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_LEFT_TOOLS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[7]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_BOTTOM_TOOLS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[8]= open_box<bool> (val);
+    update_visibility ();
+  }
+  case SLOT_EXTRA_TOOLS_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[9]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_TAB_PAGES_VISIBILITY: {
+    check_type<bool> (val, s);
+    visibility[10]= open_box<bool> (val);
+    update_visibility ();
+  } break;
+  case SLOT_AUXILIARY_WIDGET_VISIBILITY: {
+    check_type<bool> (val, s);
+    bool visible= open_box<bool> (val);
+    // 辅助窗口与 AI 侧边栏共用右侧 dock 区域；打开辅助窗口时直接关闭
+    // AI 侧边栏，避免两个 dock 纵向堆叠把侧边栏挤下去。
+    if (visible && chatSidebarMode) {
+      chatSidebarMode       = false;
+      chatSidebarModeMemory_= false;
+      sync_chat_sidebar_mode ();
+    }
+    visibility[11]= visible;
+    update_visibility ();
+  } break;
+  case SLOT_CHAT_SIDEBAR_VISIBILITY: {
+    check_type<bool> (val, s);
+    bool show= open_box<bool> (val);
+    if (is_community_stem ()) break; // community 版无 AI Chat，忽略该 slot
+    chatSidebarMode       = show;
+    chatSidebarModeMemory_= show;
+    sync_chat_sidebar_mode ();
+  } break;
+  case SLOT_AUXILIARY_WIDGET: {
+    check_type<string> (val, s);
+    auxiliaryWidget->setWindowTitle (to_qstring (open_box<string> (val)));
+  } break;
+  case SLOT_AUXILIARY_WIDGET_TITLE: {
+    check_type<string> (val, s);
+    string title= open_box<string> (val);
+    auxiliaryWidget->setWindowTitle (to_qstring (title));
+  } break;
+  case SLOT_LEFT_FOOTER: {
+    check_type<string> (val, s);
+    string msg= open_box<string> (val);
+    leftLabel->setText (to_qstring (msg));
+    leftLabel->update ();
+  } break;
+  case SLOT_MIDDLE_FOOTER: {
+    check_type<string> (val, s);
+    string msg= open_box<string> (val);
+    middleLabel->setText (to_qstring (msg));
+    middleLabel->update ();
+  } break;
+  case SLOT_RIGHT_FOOTER: {
+    check_type<string> (val, s);
+    string msg= open_box<string> (val);
+    rightLabel->setText (to_qstring (msg));
+    rightLabel->update ();
+  } break;
+  case SLOT_SCROLLBARS_VISIBILITY:
+    // ignore this: qt handles scrollbars independently
+    //                send_int (THIS, "scrollbars", val);
+    break;
+  case SLOT_INTERACTIVE_MODE: {
+    check_type<bool> (val, s);
+
+    if (open_box<bool> (val) == true) {
+      prompt= new QTMInteractivePrompt (int_prompt, int_input);
+      mainwindow ()->statusBar ()->removeWidget (leftLabel);
+      mainwindow ()->statusBar ()->removeWidget (middleLabel);
+      mainwindow ()->statusBar ()->removeWidget (rightLabel);
+      mainwindow ()->statusBar ()->addWidget (prompt, 1);
+      prompt->start ();
+    }
+    else {
+      if (prompt) prompt->end ();
+      mainwindow ()->statusBar ()->removeWidget (prompt);
+      mainwindow ()->statusBar ()->addWidget (leftLabel, 1);
+      mainwindow ()->statusBar ()->addWidget (middleLabel, 1);
+      mainwindow ()->statusBar ()->addPermanentWidget (rightLabel, 1);
+      leftLabel->show ();
+      middleLabel->show ();
+      rightLabel->show ();
+      prompt->deleteLater ();
+      prompt= NULL;
+    }
+  } break;
+  case SLOT_FILE: {
+    check_type<string> (val, s);
+    string file= open_box<string> (val);
+    if (DEBUG_QT_WIDGETS) debug_widgets << "\tFile: " << file << LF;
+    mainwindow ()->setWindowFilePath (utf8_to_qstring (file));
+    currentEditorFile= file;
+    startupTabMode   = is_startup_tab_file (file);
+    pdfTabMode       = is_pdf_tab_file (file);
+    if (pdfTabMode) {
+      currentPdfPath= utf8_to_qstring (file);
+    }
+    chatTabMode= is_chat_tab_file (file);
+    sync_startup_tab_mode ();
+    sync_chat_tab_mode ();
+    sync_chat_sidebar_mode ();
+    set_central_widget_updates_frozen (false);
+  } break;
+  case SLOT_POSITION: {
+    check_type<coord2> (val, s);
+    coord2 p           = open_box<coord2> (val);
+    QPoint pos         = to_qpoint (p);
+    int    screen_count= QGuiApplication::screens ().count ();
+    int    screen_w= QApplication::primaryScreen ()->availableSize ().width ();
+    if ((screen_count == 1 && screen_w >= pos.x ()) || (screen_count > 1)) {
+      // For only 1 screen, only move to pos.x within the screen width
+      // For multiple screens, just move it
+      mainwindow ()->move (pos);
+    }
+  } break;
+  case SLOT_SIZE: {
+    check_type<coord2> (val, s);
+    coord2 p= open_box<coord2> (val);
+    mainwindow ()->resize (to_qsize (p));
+  } break;
+  case SLOT_DESTROY: {
+    ASSERT (is_nil (val), "type mismatch");
+    if (!is_nil (quit)) quit ();
+    the_gui->need_update ();
+  } break;
+  case SLOT_FULL_SCREEN: {
+    check_type<bool> (val, s);
+    set_full_screen (open_box<bool> (val));
+  } break;
+  default:
+    qt_window_widget_rep::send (s, val);
+    return;
+  }
+
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep: sent " << slot_name (s)
+                  << "\t\tto widget\t" << type_as_string () << LF;
+}
+
+blackbox
+qt_tm_widget_rep::query (slot s, int type_id) {
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep: queried " << slot_name (s)
+                  << "\t\tto widget\t" << type_as_string () << LF;
+
+  switch (s) {
+  case SLOT_SCROLL_POSITION:
+  case SLOT_EXTENTS:
+  case SLOT_VISIBLE_PART:
+  case SLOT_ZOOM_FACTOR:
+    return main_widget->query (s, type_id);
+
+  case SLOT_HEADER_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[0]);
+
+  case SLOT_MAIN_ICONS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[1]);
+
+  case SLOT_MODE_ICONS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[2]);
+
+  case SLOT_FOCUS_ICONS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[3]);
+
+  case SLOT_USER_ICONS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[4]);
+
+  case SLOT_FOOTER_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[5]);
+
+  case SLOT_SIDE_TOOLS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[6]);
+
+  case SLOT_LEFT_TOOLS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[7]);
+
+  case SLOT_BOTTOM_TOOLS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[8]);
+
+  case SLOT_EXTRA_TOOLS_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[9]);
+
+  case SLOT_TAB_PAGES_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[10]);
+
+  case SLOT_AUXILIARY_WIDGET_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (visibility[11]);
+
+  case SLOT_CHAT_SIDEBAR_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (chatSidebarMode);
+
+  case SLOT_INTERACTIVE_INPUT: {
+    check_type_id<string> (type_id, s);
+    qt_input_text_widget_rep* w=
+        static_cast<qt_input_text_widget_rep*> (int_input.rep);
+    if (w->ok) return close_box<string> (scm_quote (w->input));
+    else return close_box<string> ("#f");
+  }
+
+  case SLOT_POSITION: {
+    check_type_id<coord2> (type_id, s);
+    return close_box<coord2> (from_qpoint (mainwindow ()->pos ()));
+  }
+
+  case SLOT_SIZE: {
+    check_type_id<coord2> (type_id, s);
+    return close_box<coord2> (from_qsize (mainwindow ()->size ()));
+  }
+
+  case SLOT_INTERACTIVE_MODE:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (prompt && prompt->isActive ());
+
+  default:
+    return qt_window_widget_rep::query (s, type_id);
+  }
+}
+
+void
+qt_tm_widget_rep::install_main_menu () {
+  if (main_menu_widget == waiting_main_menu_widget) return;
+  main_menu_widget    = waiting_main_menu_widget;
+  QList<QAction*>* src= main_menu_widget->get_qactionlist ();
+  if (!src) return;
+  QMenuBar* dest= new QMenuBar ();
+  // 设置与 menuToolBar 匹配的固定高度
+  double scale= DpiUtils::scaleFactor ();
+#ifdef Q_OS_WIN
+  int h= DpiUtils::scaled (72);
+#else
+  int h= DpiUtils::scaled (108);
+#endif
+  dest->setFixedHeight (h);
+
+  if (tm_style_sheet == "") dest->setStyle (qtmstyle ());
+  if (!use_native_menubar) {
+    dest->setNativeMenuBar (false);
+  }
+
+  dest->clear ();
+  for (int i= 0; i < src->count (); i++) {
+    QAction* a= (*src)[i];
+    if (a->menu ()) {
+      // TRICK: Mac native QMenuBar accepts only menus which are already
+      // populated
+      //  this will cause a problem for us, since menus are lazy and populated
+      //  only after triggering this is the reason we add a dummy action before
+      //  inserting the menu
+      a->menu ()->addAction ("native menubar trick");
+      dest->addAction (a->menu ()->menuAction ());
+      QObject::connect (a->menu (), SIGNAL (aboutToShow ()),
+                        the_gui->gui_helper, SLOT (aboutToShowMainMenu ()));
+      QObject::connect (a->menu (), SIGNAL (aboutToHide ()),
+                        the_gui->gui_helper, SLOT (aboutToHideMainMenu ()));
+    }
+  }
+
+  // 移除旧 menuBar
+  QList<QWidget*> widgets= menuToolBar->findChildren<QWidget*> ();
+  for (QWidget* w : widgets) {
+    w->setParent (nullptr);
+  }
+  // 确保 menuToolBar 可见
+  if (!menuToolBar->isVisible ()) {
+    menuToolBar->setVisible (true);
+  }
+
+  // 确保 menuToolBar 有正确的布局策略
+  menuToolBar->setSizePolicy (QSizePolicy::Expanding, QSizePolicy::Fixed);
+  // 确保内容可以正确显示
+  if (menuToolBar->layout ()) {
+    menuToolBar->layout ()->setContentsMargins (2, 0, 2, 0);
+    menuToolBar->layout ()->setSpacing (4);
+  }
+
+  // 添加新的 menuBar 到 menuToolBar
+  menuToolBar->addWidget (dest);
+}
+
+void
+qt_tm_widget_rep::write (slot s, blackbox index, widget w) {
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep::write " << slot_name (s) << LF;
+
+  switch (s) {
+    // Widget w is usually a qt_simple_widget_rep, with a QTMWidget as
+    // underlying widget. We must discard the current main_widget and
+    // display the new. But while switching buffers the widget w is a
+    // glue_widget, so we may not just use canvas() everywhere.
+  case SLOT_SCROLLABLE: {
+    check_type_void (index, s);
+
+    QWidget*  q         = main_widget->qwid;
+    QLayout*  l         = centralwidget ()->layout ();
+    qt_widget nextWidget= concrete (w);
+    bool      isGluePlaceholder=
+        !is_nil (nextWidget) && nextWidget->type == qt_widget_rep::glue_widget;
+    bool hasVisibleCentralContent=
+        (q && (l->indexOf (q) >= 0 || q->isVisible ())) ||
+        (startupContentWidget && (l->indexOf (startupContentWidget) >= 0 ||
+                                  startupContentWidget->isVisible ())) ||
+        (pdfViewerWidget && (l->indexOf (pdfViewerWidget) >= 0 ||
+                             pdfViewerWidget->isVisible ())) ||
+        (chatContentWidget && (l->indexOf (chatContentWidget) >= 0 ||
+                               chatContentWidget->isVisible ()));
+    if (!isGluePlaceholder && hasVisibleCentralContent) {
+      set_central_widget_updates_frozen (true);
+    }
+    if (q && l->indexOf (q) >= 0) {
+      l->removeWidget (q);
+      q->hide (); // 隐藏旧的 widget
+    }
+
+    q= concrete (w)->as_qwidget (); // force creation of the new QWidget
+    // SLOT_SCROLLABLE 只更新 main_widget，不设置 startupTabMode
+    // startupTabMode 的判定和界面更新由 SLOT_FILE 处理
+    main_widget= concrete (w);
+  } break;
+
+  case SLOT_MAIN_MENU:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      waiting_main_menu_widget= concrete (w);
+      if (menu_count <= 0) install_main_menu ();
+      else if (!contains (waiting_widgets, this))
+        // menu interaction ongoing, postpone new menu installation until done
+        waiting_widgets << this;
+    }
+    break;
+
+  case SLOT_MAIN_ICONS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      main_icons_widget    = concrete (w);
+      QList<QAction*>* list= main_icons_widget->get_qactionlist ();
+      if (list) {
+        replaceButtons (mainToolBar, list);
+        update_visibility ();
+      }
+    }
+    break;
+
+  case SLOT_TAB_PAGES:
+    check_type_void (index, s);
+    {
+      tab_bar_widget       = concrete (w);
+      QList<QAction*>* list= tab_bar_widget->get_qactionlist ();
+      if (list) {
+        tabPageContainer->replaceTabPages (list);
+        update_visibility ();
+        // 为标签页设置hit test可见性
+        if (windowAgent) {
+          tabPageContainer->setHitTestVisibleForTabPages (windowAgent);
+        }
+      }
+    }
+    break;
+
+  case SLOT_NOTIFICATION_BAR:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      notification_bar_widget     = concrete (w);
+      QList<QAction*>* action_list= notification_bar_widget->get_qactionlist ();
+      if (!action_list || action_list->isEmpty ()) {
+        m_currentScmNotificationItem.clear ();
+        if (scmNotificationBar) scmNotificationBar->clearContent ();
+      }
+      else {
+        QWidget* new_qwidget= notification_bar_widget->as_qwidget ();
+        if (new_qwidget && scmNotificationBar) {
+          scmNotificationBar->setContentWidget (new_qwidget);
+        }
+        eval ("(use-modules (texmacs menus notificationbar))");
+        m_currentScmNotificationItem=
+            to_qstring (as_string (call ("notification-bar-rendered-item")));
+        if (scmNotificationBar) {
+          scmNotificationBar->setSnoozeText (to_qstring (
+              as_string (call ("notification-bar-snooze-action-label"))));
+        }
+      }
+    }
+    break;
+
+  case SLOT_AUXILIARY_WIDGET:
+    check_type_void (index, s);
+    {
+      auxiliary_widget    = concrete (w);
+      QWidget* new_qwidget= auxiliary_widget->as_qwidget ();
+      QWidget* old_qwidget= auxiliaryWidget->widget ();
+      if (old_qwidget) old_qwidget->deleteLater ();
+      new_qwidget->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+      // 使用一层容器包装 new_qwidget，以使布局更美观（同时留出"广告位"）
+      QWidget* container= new QWidget ();
+      container->setObjectName ("auxiliary_container");
+      QVBoxLayout* verticalLayout= new QVBoxLayout (container);
+      verticalLayout->setSpacing (0);                  // 间距
+      verticalLayout->setContentsMargins (0, 0, 0, 0); // 边距
+      verticalLayout->setAlignment (Qt::AlignTop |
+                                    Qt::AlignHCenter); // 居中对齐
+      verticalLayout->addWidget (new_qwidget);
+
+      auxiliaryWidget->setWidget (container);
+      update_visibility ();
+    }
+    break;
+
+  case SLOT_MODE_ICONS:
+    check_type_void (index, s);
+    {
+      mode_icons_widget    = concrete (w);
+      QList<QAction*>* list= mode_icons_widget->get_qactionlist ();
+      if (list) {
+        replaceButtons (modeToolBar, list);
+        update_visibility ();
+      }
+    }
+    break;
+
+  case SLOT_FOCUS_ICONS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      bool can_update= true;
+#if (QT_VERSION >= 0x050000)
+      // BUG:
+      // there is a problem with updateActions  which apparently
+      // reset a running input method in Qt5.
+      //
+      // This is (probably) also relate to
+      // bug #47338 [CJK] input disappears immediately
+      // see http://lists.gnu.org/archive/html/texmacs-dev/2017-09/msg00000.html
+
+      // HACK: we just disable the focus bar updating while preediting.
+      // This seems enough since the other toolbars are not usually updated
+      // while performing an input method keyboard sequence
+      if (canvas ()) can_update= !canvas ()->isPreediting ();
+#endif
+      if (can_update) {
+        focus_icons_widget   = concrete (w);
+        QList<QAction*>* list= focus_icons_widget->get_qactionlist ();
+        if (list) {
+          replaceButtons (focusToolBar, list);
+          update_visibility ();
+        }
+      }
+    }
+    break;
+
+  case SLOT_USER_ICONS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      user_icons_widget    = concrete (w);
+      QList<QAction*>* list= user_icons_widget->get_qactionlist ();
+      if (list) {
+        replaceButtons (userToolBar, list);
+        update_visibility ();
+      }
+    }
+    break;
+
+  case SLOT_SIDE_TOOLS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      side_tools_widget   = concrete (w);
+      QWidget* new_qwidget= side_tools_widget->as_qwidget ();
+      QWidget* old_qwidget= sideTools->widget ();
+      if (old_qwidget) old_qwidget->deleteLater ();
+      sideTools->setWidget (new_qwidget);
+      update_visibility ();
+#if (QT_VERSION >= 0x050000)
+      QList<QDockWidget*> l1;
+      l1.append ((QDockWidget*) extraTools);
+      QList<int> l2;
+      l2.append (1);
+      mainwindow ()->resizeDocks (l1, l2, Qt::Horizontal);
+#endif
+      new_qwidget->show ();
+    }
+    break;
+
+  case SLOT_LEFT_TOOLS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      left_tools_widget   = concrete (w);
+      QWidget* new_qwidget= left_tools_widget->as_qwidget ();
+      QWidget* old_qwidget= leftTools->widget ();
+      if (old_qwidget) old_qwidget->deleteLater ();
+      leftTools->setWidget (new_qwidget);
+      update_visibility ();
+#if (QT_VERSION >= 0x050000)
+      QList<QDockWidget*> l1;
+      l1.append ((QDockWidget*) extraTools);
+      QList<int> l2;
+      l2.append (1);
+      mainwindow ()->resizeDocks (l1, l2, Qt::Horizontal);
+#endif
+      new_qwidget->show ();
+    }
+    break;
+
+  case SLOT_BOTTOM_TOOLS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      bottom_tools_widget = concrete (w);
+      QWidget* new_qwidget= bottom_tools_widget->as_qwidget ();
+      QWidget* old_qwidget= bottomTools->widget ();
+      if (old_qwidget) old_qwidget->deleteLater ();
+      bottomTools->setWidget (new_qwidget);
+      update_visibility ();
+#if (QT_VERSION >= 0x050000)
+      QList<QDockWidget*> l1;
+      l1.append ((QDockWidget*) extraTools);
+      QList<int> l2;
+      l2.append (1);
+      mainwindow ()->resizeDocks (l1, l2, Qt::Vertical);
+#endif
+      new_qwidget->show ();
+    }
+    break;
+
+  case SLOT_EXTRA_TOOLS:
+    check_type_void (index, s);
+    if (startupTabMode || chatTabMode) break;
+    {
+      extra_tools_widget  = concrete (w);
+      QWidget* new_qwidget= extra_tools_widget->as_qwidget ();
+      QWidget* old_qwidget= extraTools->widget ();
+      if (old_qwidget) old_qwidget->deleteLater ();
+      extraTools->setWidget (new_qwidget);
+      update_visibility ();
+#if (QT_VERSION >= 0x050000)
+      QList<QDockWidget*> l1;
+      l1.append ((QDockWidget*) extraTools);
+      QList<int> l2;
+      l2.append (1);
+      mainwindow ()->resizeDocks (l1, l2, Qt::Vertical);
+#endif
+      new_qwidget->show ();
+    }
+    break;
+
+  case SLOT_INTERACTIVE_PROMPT:
+    check_type_void (index, s);
+    int_prompt= concrete (w);
+    break;
+
+  case SLOT_INTERACTIVE_INPUT:
+    check_type_void (index, s);
+    int_input= concrete (w);
+    break;
+
+  default:
+    qt_window_widget_rep::write (s, index, w);
+  }
+}
+
+void set_standard_style_sheet (QWidget* w);
+
+void
+qt_tm_widget_rep::set_full_screen (bool flag) {
+  bool was_presentation= is_presentation;
+  full_screen          = flag;
+  QWidget* win         = mainwindow ()->window ();
+  if (win) {
+    if (flag) {
+      QPalette pal;
+      pal.setColor (QPalette::Mid, QColor (0, 0, 0));
+      mainwindow ()->setPalette (pal);
+      if (mainwindow ()->centralWidget () &&
+          mainwindow ()->centralWidget ()->layout ()) {
+        mainwindow ()->centralWidget ()->layout ()->setContentsMargins (0, 0, 0,
+                                                                        0);
+      }
+#ifdef UNIFIED_TOOLBAR
+      if (use_unified_toolbar) {
+        // HACK: we disable unified toolbar since otherwise
+        //   the application will crash when we return to normal mode
+        //  (bug in Qt? present at least with 4.7.1)
+        mainwindow ()->setUnifiedTitleAndToolBarOnMac (false);
+        mainwindow ()->centralWidget ()->layout ()->setContentsMargins (0, 0, 0,
+                                                                        0);
+      }
+#endif
+      //      mainwindow()->window()->setContentsMargins(0,0,0,0);
+      // win->showFullScreen();
+      win->setWindowState (win->windowState () | Qt::WindowFullScreen);
+      menuToolBarVisibleCache= menuToolBar && menuToolBar->isVisible ();
+      if (menuToolBar) menuToolBar->setVisible (false);
+      if (windowAgent) {
+        QWidget* tb         = windowAgent->titleBar ();
+        titleBarVisibleCache= tb && tb->isVisible ();
+        if (tb) tb->setVisible (false);
+      }
+      if (in_presentation_mode ()) {
+        is_presentation          = true;
+        QTMScrollView* scrollView= scrollarea ();
+        if (scrollView) {
+          QWidget* viewport= scrollView->viewport ();
+          if (viewport) {
+            QPalette vpal;
+            vpal.setColor (QPalette::Shadow, QColor (0, 0, 0));
+            vpal.setColor (QPalette::Mid, QColor (0, 0, 0));
+            viewport->setPalette (vpal);
+            viewport->setBackgroundRole (QPalette::Shadow);
+          }
+        }
+        if (chatSidebarToggleBtn) chatSidebarToggleBtn->hide ();
+      }
+      else if (was_presentation) {
+        is_presentation          = false;
+        QColor         bgcol     = to_qcolor (tm_background);
+        QTMScrollView* scrollView= scrollarea ();
+        if (scrollView) {
+          QWidget* viewport= scrollView->viewport ();
+          if (viewport) {
+            QPalette vpal;
+            vpal.setColor (QPalette::Mid, bgcol);
+            vpal.setColor (QPalette::Shadow, bgcol);
+            viewport->setPalette (vpal);
+            viewport->setBackgroundRole (QPalette::Mid);
+          }
+        }
+      }
+    }
+    else {
+      QPalette pal;
+      QColor   bgcol= to_qcolor (tm_background);
+      pal.setColor (QPalette::Mid, bgcol);
+      mainwindow ()->setPalette (pal);
+      if (mainwindow ()->centralWidget () &&
+          mainwindow ()->centralWidget ()->layout ()) {
+        mainwindow ()->centralWidget ()->layout ()->setContentsMargins (0, 1, 0,
+                                                                        0);
+      }
+      bool cache   = visibility[0];
+      visibility[0]= false;
+      update_visibility ();
+      //      win->showNormal();
+      win->setWindowState (win->windowState () & ~Qt::WindowFullScreen);
+
+      visibility[0]= cache;
+      update_visibility ();
+      if (menuToolBar) menuToolBar->setVisible (menuToolBarVisibleCache);
+      if (windowAgent) {
+        QWidget* tb= windowAgent->titleBar ();
+        if (tb) tb->setVisible (titleBarVisibleCache);
+      }
+      if (was_presentation) {
+        QTMScrollView* scrollView= scrollarea ();
+        if (scrollView) {
+          QWidget* viewport= scrollView->viewport ();
+          if (viewport) {
+            QPalette vpal;
+            vpal.setColor (QPalette::Mid, bgcol);
+            vpal.setColor (QPalette::Shadow, bgcol);
+            viewport->setPalette (vpal);
+            viewport->setBackgroundRole (QPalette::Mid);
+          }
+        }
+      }
+      is_presentation= false;
+#ifdef UNIFIED_TOOLBAR
+      if (use_unified_toolbar) {
+        mainwindow ()->centralWidget ()->layout ()->setContentsMargins (0, 1, 0,
+                                                                        0);
+        // HACK: we reenable unified toolbar (see above HACK)
+        //   the application will crash when we return to normal mode
+        mainwindow ()->setUnifiedTitleAndToolBarOnMac (true);
+      }
+#endif
+    }
+  }
+
+  scrollarea ()->setHorizontalScrollBarPolicy (flag ? Qt::ScrollBarAlwaysOff
+                                                    : Qt::ScrollBarAsNeeded);
+  scrollarea ()->setVerticalScrollBarPolicy (flag ? Qt::ScrollBarAlwaysOff
+                                                  : Qt::ScrollBarAsNeeded);
+}
+
+/******************************************************************************
+ * qt_tm_embedded_widget_rep
+ ******************************************************************************/
+
+qt_tm_embedded_widget_rep::qt_tm_embedded_widget_rep (command _quit)
+    : qt_widget_rep (embedded_tm_widget), quit (_quit) {
+  main_widget= ::glue_widget (true, true, 1, 1);
+}
+
+void
+qt_tm_embedded_widget_rep::send (slot s, blackbox val) {
+
+  switch (s) {
+  case SLOT_INVALIDATE:
+  case SLOT_INVALIDATE_ALL:
+  case SLOT_EXTENTS:
+  case SLOT_SCROLL_POSITION:
+  case SLOT_ZOOM_FACTOR:
+  case SLOT_MOUSE_GRAB:
+    main_widget->send (s, val);
+    return;
+
+    /// FIXME: decide what to do with these for embedded widgets
+  case SLOT_HEADER_VISIBILITY:
+  case SLOT_MAIN_ICONS_VISIBILITY:
+  case SLOT_MODE_ICONS_VISIBILITY:
+  case SLOT_FOCUS_ICONS_VISIBILITY:
+  case SLOT_USER_ICONS_VISIBILITY:
+  case SLOT_FOOTER_VISIBILITY:
+  case SLOT_SIDE_TOOLS_VISIBILITY:
+  case SLOT_LEFT_TOOLS_VISIBILITY:
+  case SLOT_BOTTOM_TOOLS_VISIBILITY:
+  case SLOT_EXTRA_TOOLS_VISIBILITY:
+  case SLOT_TAB_PAGES_VISIBILITY:
+  case SLOT_AUXILIARY_WIDGET_VISIBILITY:
+  case SLOT_CHAT_SIDEBAR_VISIBILITY:
+  case SLOT_NOTIFICATION_BAR:
+  case SLOT_AUXILIARY_WIDGET:
+  case SLOT_LEFT_FOOTER:
+  case SLOT_RIGHT_FOOTER:
+  case SLOT_MIDDLE_FOOTER:
+  case SLOT_SCROLLBARS_VISIBILITY:
+  case SLOT_INTERACTIVE_MODE:
+  case SLOT_FILE:
+    break;
+
+  case SLOT_DESTROY: {
+    ASSERT (is_nil (val), "type mismatch");
+    if (!is_nil (quit)) quit ();
+    the_gui->need_update ();
+  } break;
+
+  default:
+    qt_widget_rep::send (s, val);
+    return;
+  }
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_embedded_widget_rep: sent " << slot_name (s)
+                  << "\t\tto widget\t" << type_as_string () << LF;
+}
+
+blackbox
+qt_tm_embedded_widget_rep::query (slot s, int type_id) {
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_embedded_widget_rep::query " << slot_name (s) << LF;
+
+  switch (s) {
+  case SLOT_IDENTIFIER: {
+    if (qwid) {
+      widget_rep* wid= qt_window_widget_rep::widget_from_qwidget (qwid);
+      if (wid) return wid->query (s, type_id);
+    }
+    return close_box<int> (0);
+  }
+
+  case SLOT_SCROLL_POSITION:
+  case SLOT_EXTENTS:
+  case SLOT_VISIBLE_PART:
+  case SLOT_ZOOM_FACTOR:
+  case SLOT_POSITION:
+  case SLOT_SIZE:
+    if (!is_nil (main_widget)) return main_widget->query (s, type_id);
+    else return qt_widget_rep::query (s, type_id);
+    /// FIXME: decide what to do with these for embedded widgets
+  case SLOT_HEADER_VISIBILITY:
+  case SLOT_MAIN_ICONS_VISIBILITY:
+  case SLOT_MODE_ICONS_VISIBILITY:
+  case SLOT_FOCUS_ICONS_VISIBILITY:
+  case SLOT_USER_ICONS_VISIBILITY:
+  case SLOT_FOOTER_VISIBILITY:
+  case SLOT_SIDE_TOOLS_VISIBILITY:
+  case SLOT_LEFT_TOOLS_VISIBILITY:
+  case SLOT_BOTTOM_TOOLS_VISIBILITY:
+  case SLOT_EXTRA_TOOLS_VISIBILITY:
+  case SLOT_TAB_PAGES_VISIBILITY:
+  case SLOT_AUXILIARY_WIDGET_VISIBILITY:
+  case SLOT_CHAT_SIDEBAR_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (false);
+
+  default:
+    return qt_widget_rep::query (s, type_id);
+  }
+}
+
+widget
+qt_tm_embedded_widget_rep::read (slot s, blackbox index) {
+  widget ret;
+
+  switch (s) {
+  case SLOT_CANVAS:
+    check_type_void (index, s);
+    ret= main_widget;
+    break;
+  default:
+    return qt_widget_rep::read (s, index);
+  }
+
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_widget_rep::read " << slot_name (s)
+                  << "\t\tfor widget\t" << type_as_string () << LF;
+
+  return ret;
+}
+
+void
+qt_tm_embedded_widget_rep::write (slot s, blackbox index, widget w) {
+  if (DEBUG_QT_WIDGETS)
+    debug_widgets << "qt_tm_embedded_widget_rep::write " << slot_name (s) << LF;
+
+  switch (s) {
+    // Widget w is a qt_simple_widget_rep, with a QTMWidget as underlying
+    // widget. We must discard the current QTMWidget and display the new.
+    // see qt_tm_widget_rep::write()
+  case SLOT_SCROLLABLE: {
+    check_type_void (index, s);
+    main_widget= w;
+  } break;
+  case SLOT_MAIN_MENU:
+  case SLOT_MODE_ICONS:
+  case SLOT_FOCUS_ICONS: {
+    if (!qwid) as_qwidget ();
+    QWidget* p= qwid;
+    while (p) {
+      if (QTChatTabWidget* chat= qobject_cast<QTChatTabWidget*> (p)) {
+        qt_tm_widget_rep* mainW= chat->parentTmWidget ();
+        if (mainW) {
+          mainW->write (s, index, w);
+          return;
+        }
+      }
+      p= p->parentWidget ();
+    }
+    qt_widget_rep::write (s, index, w);
+  } break;
+  case SLOT_MAIN_ICONS:
+  case SLOT_USER_ICONS:
+  case SLOT_SIDE_TOOLS:
+  case SLOT_LEFT_TOOLS:
+  case SLOT_BOTTOM_TOOLS:
+  case SLOT_EXTRA_TOOLS:
+  case SLOT_TAB_PAGES:
+  case SLOT_NOTIFICATION_BAR:
+  case SLOT_AUXILIARY_WIDGET:
+  case SLOT_INTERACTIVE_INPUT:
+  case SLOT_INTERACTIVE_PROMPT:
+  default:
+    qt_widget_rep::write (s, index, w);
+  }
+}
+
+QWidget*
+qt_tm_embedded_widget_rep::as_qwidget () {
+  qwid          = new QWidget ();
+  QVBoxLayout* l= new QVBoxLayout ();
+  l->setContentsMargins (0, 0, 0, 0);
+  qwid->setLayout (l);
+  l->addWidget (concrete (main_widget)->as_qwidget ());
+  return qwid;
+}
+
+QLayoutItem*
+qt_tm_embedded_widget_rep::as_qlayoutitem () {
+  return new QWidgetItem (as_qwidget ());
+}
+
+void
+qt_tm_widget_rep::onAddTabRequested () {
+  static QTime     lastCallTime;
+  static const int MIN_INTERVAL_MS= 500;
+
+  if (lastCallTime.isValid () &&
+      lastCallTime.msecsTo (QTime::currentTime ()) < MIN_INTERVAL_MS) {
+    return;
+  }
+  lastCallTime= QTime::currentTime ();
+
+  // 顶部标签栏 “+” 来自当前主窗口，但焦点可能位于 AI Chat 输入框等非默认
+  // view（无 window 的 passive view，或挂在 embedded/aux window 上的 view）。
+  // 这种情况下直接执行 `(new-document)` 会在错误 view 上运行，甚至在
+  // switch-to-parent-window -> concrete_window 处失败。这里改为基于当前
+  // qt_tm_widget_rep 所属主窗口恢复到该窗口的默认 view，再触发新建。
+  url owner_view= window_view_for_widget (this);
+  if (!is_none (owner_view)) {
+    url cur_view= get_current_view_safe ();
+    url cur_window=
+        is_none (cur_view) ? url_none () : view_to_window (cur_view);
+    url owner_window= view_to_window (owner_view);
+    if (shouldResetCurrentViewForNewTab (cur_view, cur_window, owner_window))
+      set_current_view (owner_view);
+  }
+
+  exec_delayed (scheme_cmd ("(new-document)"));
+}
+
+// 登录相关代码
+void
+qt_tm_widget_rep::setupLoginDialog (QWK::LoginDialog* loginDialog) {
+  // 创建登录对话框内容
+  QWidget* contentWidget= new QWidget ();
+  contentWidget->setObjectName ("login-dialog-content");
+  // 保持弹窗宽度稳定，避免更新区显隐时整体位置发生横向跳动。
+  const int loginDialogWidth= DpiUtils::scaled (300);
+  contentWidget->setMinimumWidth (loginDialogWidth);
+  contentWidget->setMaximumWidth (loginDialogWidth);
+  auto mainLayout= new QVBoxLayout (contentWidget);
+  mainLayout->setContentsMargins (16, 16, 16, 16);
+  mainLayout->setSpacing (16);
+
+  // 顶部区域：头像、名称、账户ID
+  auto topSection= new QWidget ();
+  auto topLayout = new QHBoxLayout (topSection);
+  topLayout->setContentsMargins (0, 0, 0, 0);
+  topLayout->setSpacing (12);
+
+  // 左侧：头像
+  auto avatarContainer= new QWidget ();
+  auto avatarLayout   = new QVBoxLayout (avatarContainer);
+  avatarLayout->setContentsMargins (0, 0, 0, 0);
+  avatarLayout->setAlignment (Qt::AlignCenter);
+
+  // 头像标签 - 后续通过API设置
+  avatarLabel= new QLabel ();
+  avatarLabel->setObjectName ("login-avatar-label");
+  avatarLabel->setAlignment (Qt::AlignCenter);
+  avatarLabel->setText ("Liii"); // 默认值
+  avatarLayout->addWidget (avatarLabel);
+
+  // 右侧：名称和账户ID
+  auto infoContainer= new QWidget ();
+  auto infoLayout   = new QVBoxLayout (infoContainer);
+  infoLayout->setContentsMargins (0, 0, 0, 0);
+  infoLayout->setSpacing (4);
+
+  // 登出按钮 - 登录成功后显示（使用图标）
+  const int logoutIconSize= DpiUtils::scaled (20);
+  logoutButton            = new QPushButton ();
+  logoutButton->setObjectName ("logout-button");
+  logoutButton->setIcon (QIcon (":/window-bar/logout.svg"));
+  logoutButton->setToolTip (qt_translate ("Logout"));
+  logoutButton->setFlat (true); // 设置为扁平按钮，看起来更像图标
+  logoutButton->setIconSize (QSize (logoutIconSize, logoutIconSize));
+  // 移除按钮背景色，使其看起来像纯图标
+  logoutButton->setStyleSheet (
+      "QPushButton { background: transparent; border: none; }");
+  logoutButton->setVisible (false); // 初始状态：用户未登录，登出按钮不可见
+
+  // 第一行：名称和登出按钮
+  auto nameRowContainer= new QWidget ();
+  auto nameRowLayout   = new QHBoxLayout (nameRowContainer);
+  nameRowLayout->setContentsMargins (0, 0, 0, 0);
+  nameRowLayout->setSpacing (8);
+
+  // 会员名称标签 - 后续通过API设置
+  nameLabel= new QLabel (qt_translate ("Not logged in"));
+  nameLabel->setObjectName ("login-name-label");
+
+  // 账户ID标签 - 后续通过API设置
+  accountIdLabel= new QLabel (
+      qt_translate ("Please login to view your account information."));
+  accountIdLabel->setObjectName ("login-account-label");
+
+  nameRowLayout->addWidget (nameLabel);
+  nameRowLayout->addStretch ();
+
+  infoLayout->addWidget (nameRowContainer);
+  infoLayout->addWidget (accountIdLabel);
+
+  topLayout->addWidget (avatarContainer);
+  topLayout->addWidget (infoContainer);
+  topLayout->addStretch ();
+  topLayout->addWidget (logoutButton);
+
+  // 底部区域：会员期限
+  auto bottomSection= new QWidget ();
+  bottomSection->setObjectName ("login-bottom-section");
+  auto bottomLayout   = new QVBoxLayout (bottomSection);
+  membershipTitleLabel= new QLabel (qt_translate ("Membership info"));
+  membershipTitleLabel->setObjectName ("login-membership-title");
+
+  // 会员期限标签 - 后续通过API设置
+  membershipPeriodLabel= new QLabel (qt_translate ("Non-member"));
+  membershipPeriodLabel->setObjectName ("login-membership-period");
+
+  // 动作按钮 - 根据用户状态显示登录或注册
+  loginActionButton= new QPushButton (qt_translate ("Login"));
+  loginActionButton->setObjectName ("login-action-button");
+
+  bottomLayout->addWidget (membershipTitleLabel);
+  bottomLayout->addWidget (membershipPeriodLabel);
+  bottomLayout->addWidget (loginActionButton);
+
+  // 更新提示区域（商业版显示更新提示）- 放在底部
+  m_updateSection= new QWidget ();
+  m_updateSection->setObjectName ("login-update-section");
+  auto updateLayout= new QHBoxLayout (m_updateSection);
+  updateLayout->setContentsMargins (12, 12, 12, 12);
+  updateLayout->setSpacing (8);
+  updateLayout->setAlignment (Qt::AlignVCenter);
+
+  // 版本信息标签
+  m_updateTitleLabel= new QLabel ();
+  m_updateTitleLabel->setObjectName ("login-update-title");
+  m_updateTitleLabel->setWordWrap (false);
+  m_updateTitleLabel->setAlignment (Qt::AlignVCenter | Qt::AlignLeft);
+  m_updateTitleLabel->setSizePolicy (QSizePolicy::Expanding,
+                                     QSizePolicy::Preferred);
+
+  // 按钮
+  const int updateButtonHeight= DpiUtils::scaled (32);
+  m_updateNowButton           = new QPushButton (qt_translate ("Update Now"));
+  m_updateNowButton->setObjectName ("login-update-now-btn");
+  m_updateNowButton->setFlat (true);
+  m_updateNowButton->setMinimumHeight (updateButtonHeight);
+
+  m_snoozeButton= new QPushButton (qt_translate ("×"));
+  m_snoozeButton->setObjectName ("login-snooze-btn");
+  m_snoozeButton->setFlat (true);
+  m_snoozeButton->setFixedSize (updateButtonHeight, updateButtonHeight);
+  m_snoozeButton->setToolTip (qt_translate ("Remind Later"));
+
+  updateLayout->addWidget (m_updateTitleLabel, 1, Qt::AlignVCenter);
+  updateLayout->addWidget (m_updateNowButton, 0, Qt::AlignVCenter);
+  updateLayout->addWidget (m_snoozeButton, 0, Qt::AlignVCenter);
+
+  // 默认隐藏更新区域，不保留空白
+  m_updateSection->setVisible (false);
+  QSizePolicy updateSectionPolicy= m_updateSection->sizePolicy ();
+  updateSectionPolicy.setRetainSizeWhenHidden (false);
+  m_updateSection->setSizePolicy (updateSectionPolicy);
+
+  // 添加区域到主布局 - 更新提示放在底部
+  mainLayout->addWidget (topSection);
+  mainLayout->addWidget (bottomSection);
+  mainLayout->addWidget (m_updateSection);
+
+  // 连接更新按钮信号
+  QObject::connect (m_updateNowButton, &QPushButton::clicked, [this] () {
+    // 打开下载页面（通过 Scheme 获取正确的 URL）
+    eval ("(use-modules (utils misc version-update))");
+    object  urlObj     = call ("get-update-download-url");
+    QString downloadUrl= to_qstring (as_string (urlObj));
+    QDesktopServices::openUrl (QUrl (downloadUrl));
+    setLoginDialogUpdateSectionVisible (false);
+    // 关闭登录弹窗
+    if (m_loginDialog) {
+      m_loginDialog->hide ();
+    }
+  });
+
+  QObject::connect (m_snoozeButton, &QPushButton::clicked, [this] () {
+    // 执行稍后提醒逻辑（3天后再次提醒）
+    eval ("(use-modules (utils misc version-update))");
+    call ("snooze-version-update");
+    setLoginDialogUpdateSectionVisible (false);
+    // 关闭登录弹窗
+    if (m_loginDialog) {
+      m_loginDialog->hide ();
+    }
+  });
+
+  // 设置对话框内容
+  loginDialog->setContentWidget (contentWidget);
+  loginDialog->updateGeometry ();
+  loginDialog->adjustSize ();
+
+#if defined(Q_OS_MAC)
+  // 在 macOS 下将登录对话框内容整体右移 100px：
+  if (contentWidget->parentWidget ()) {
+    QLayout* parentLayout= contentWidget->parentWidget ()->layout ();
+    if (parentLayout) {
+      int left, top, right, bottom;
+      parentLayout->getContentsMargins (&left, &top, &right, &bottom);
+      parentLayout->setContentsMargins (left + 100, top, right, bottom);
+      parentLayout->invalidate ();
+      loginDialog->updateGeometry ();
+      loginDialog->adjustSize ();
+    }
+  }
+#endif
+
+  // 连接按钮信号 - 根据文本动态处理
+  QObject::connect (loginActionButton, &QPushButton::clicked, [this] () {
+    if (loginActionButton->text () == qt_translate ("Login")) {
+      qDebug ("Login button clicked - triggering OAuth2 flow");
+      // 触发OAuth2登录流程
+      triggerOAuth2 ();
+    }
+    else {
+      // 打开会员购买/续费链接
+      qDebug ("打开会员购买/续费链接");
+#if !IS_COMMUNITY
+      telemetry_track ("VIP_CLICK", "'((\"mode\" . \"activate\"))");
+#endif
+      openRenewalPage ();
+    }
+  });
+
+  // 连接登出按钮信号
+  QObject::connect (logoutButton, &QPushButton::clicked, [this] () {
+    qDebug ("Logout button clicked");
+    logout ();
+  });
+}
+
+void
+qt_tm_widget_rep::refreshLoginDialogPlacement () {
+  if (m_loginDialog && m_loginDialog->isVisible ()) {
+    show_login_dialog_at_button (m_loginDialog, loginButton);
+  }
+}
+
+bool
+qt_tm_widget_rep::shouldShowLoginDialogUpdateSection () {
+  if (!m_hasUpdateAvailable) return false;
+
+  eval ("(use-modules (utils misc version-update))");
+  return as_bool (call ("should-check-version-update?"));
+}
+
+void
+qt_tm_widget_rep::setLoginDialogUpdateSectionVisible (bool visible) {
+  if (!m_updateSection) return;
+
+  const bool visibilityChanged= (m_updateSection->isVisible () != visible);
+  if (visibilityChanged) m_updateSection->setVisible (visible);
+
+  if (QWidget* parent= m_updateSection->parentWidget ()) {
+    if (QLayout* layout= parent->layout ()) {
+      layout->invalidate ();
+      layout->activate ();
+    }
+  }
+
+  if (m_loginDialog) {
+    m_loginDialog->updateGeometry ();
+    m_loginDialog->adjustSize ();
+  }
+
+  if (visibilityChanged || visible) {
+    refreshLoginDialogPlacement ();
+  }
+}
+
+void
+qt_tm_widget_rep::refreshScmNotificationBar () {
+  if (!has_current_window ()) return;
+  call ("update-menus");
+}
+
+bool
+qt_tm_widget_rep::shouldResetCurrentViewForNewTab (url currentView,
+                                                   url currentWindow,
+                                                   url ownerWindow) {
+  if (is_none (ownerWindow)) return false;
+  if (is_none (currentView) || is_none (currentWindow)) return true;
+  if (currentWindow != ownerWindow) return true;
+  return !is_tmfs_view_type (currentView, "default");
+}
+
+void
+qt_tm_widget_rep::syncScmUpdateNotification (bool           updateAvailable,
+                                             const QString& remoteVersion) {
+  if (is_community_stem ()) {
+    // 社区版：保持现状，不显示更新提示
+    return;
+  }
+
+  // 商业版：更新登录按钮和弹窗
+  if (loginButton) {
+    loginButton->setBadgeVisible (updateAvailable);
+  }
+
+  if (m_updateTitleLabel && updateAvailable) {
+    QString title=
+        qt_translate ("New version available") + ": " + remoteVersion;
+    m_updateTitleLabel->setText (title);
+  }
+  else if (m_updateTitleLabel) {
+    m_updateTitleLabel->clear ();
+  }
+
+  // 记录更新状态，供登录弹窗打开时使用
+  m_hasUpdateAvailable= updateAvailable;
+
+  setLoginDialogUpdateSectionVisible (shouldShowLoginDialogUpdateSection ());
+}
+
+void
+qt_tm_widget_rep::syncScmGuestNotification (bool visible) {
+  eval ("(use-modules (texmacs menus notificationbar))");
+  call ("notification-bar-set-guest-visible", object (visible));
+  refreshScmNotificationBar ();
+}
+
+void
+qt_tm_widget_rep::syncScmMembershipNotification (
+    bool hasData, const QString& memberType, const QString& periodLabel,
+    const QString& periodLabelColor, const QString& productType) {
+  eval ("(use-modules (texmacs menus notificationbar))");
+  string command= "(notification-bar-set-membership-state " *
+                  string (hasData ? "#t" : "#f") * " " *
+                  scm_quote (from_qstring (memberType)) * " " *
+                  scm_quote (from_qstring (periodLabel)) * " " *
+                  scm_quote (from_qstring (periodLabelColor)) * " " *
+                  scm_quote (from_qstring (productType)) * ")";
+  eval (command);
+  refreshScmNotificationBar ();
+}
+
+void
+qt_tm_widget_rep::refreshMembershipInfoInBackground () {
+  if (is_community_stem ()) {
+    syncScmMembershipNotification (false);
+    return;
+  }
+
+  eval ("(use-modules (liii account))");
+  QString token= to_qstring (as_string (call ("account-load-token")));
+  if (token.isEmpty ()) {
+    syncScmMembershipNotification (false);
+    return;
+  }
+
+  fetchUserInfo (token, false);
+}
+
+void
+qt_tm_widget_rep::checkLocalTokenAndLogin () {
+  // 检查是否为社区版本，如果是则打开官方网址
+  if (is_community_stem ()) {
+    string pricingUrl=
+        as_string (call ("account-oauth2-config", "click-return-liii-url"));
+    QDesktopServices::openUrl (QUrl (to_qstring (pricingUrl)));
+    return;
+  }
+
+  if (m_loginDialog && m_loginDialog->isVisible ()) {
+    m_loginDialog->hide ();
+    return;
+  }
+
+  // 点击登录按钮后立即隐藏小红点（用户已看到提示，下次启动如未更新会再次显示）
+  if (loginButton && loginButton->badgeVisible ()) {
+    loginButton->setBadgeVisible (false);
+  }
+
+  // 根据当前更新状态同步更新区显隐和弹窗几何
+  setLoginDialogUpdateSectionVisible (shouldShowLoginDialogUpdateSection ());
+
+  // 使用scheme代码获取本地token缓存
+  eval ("(use-modules (liii account))");
+  string  token  = as_string (call ("account-load-token"));
+  QString q_token= to_qstring (token);
+  qDebug ("Cached token: %s", q_token.isEmpty () ? "empty" : "found");
+
+  if (!q_token.isEmpty ()) {
+    // 有token，尝试获取用户信息
+    fetchUserInfo (q_token, true);
+  }
+  else {
+    // 没有token，显示登录对话框（用户需要手动点击登录按钮）
+    show_login_dialog_at_button (m_loginDialog, loginButton);
+  }
+}
+
+void
+qt_tm_widget_rep::fetchUserInfo (const QString& token, bool showDialog) {
+  // 创建网络访问管理器
+  QNetworkAccessManager* manager= new QNetworkAccessManager ();
+
+  // 去掉token末尾的'˙'字符
+  QString clean_token= token;
+  if (clean_token.endsWith ("˙")) {
+    clean_token= clean_token.left (clean_token.length () - 1);
+  }
+
+  // 把 "Bearer " 和 token合并成 auth_str
+  QString q_auth_str= "Bearer " + clean_token;
+  string  auth_str  = from_qstring (q_auth_str);
+
+  // 创建请求
+  QNetworkRequest request;
+  // 从Scheme配置获取用户信息API URL
+  eval ("(use-modules (liii account))");
+  string userInfoUrl=
+      as_string (call ("account-oauth2-config", "user-info-url"));
+  request.setUrl (QUrl (to_qstring (userInfoUrl)));
+  request.setRawHeader ("Authorization", to_qstring (auth_str).toUtf8 ());
+  request.setRawHeader ("Content-Type", "application/json");
+  request.setRawHeader ("User-Agent",
+                        to_qstring (stem_user_agent ()).toUtf8 ());
+  request.setRawHeader ("X-Device-Id",
+                        to_qstring (stem_device_id ()).toUtf8 ());
+
+  // 发送请求
+  QNetworkReply* reply= manager->get (request);
+
+  // 连接信号处理响应
+  QObject::connect (
+      reply, &QNetworkReply::finished, [this, reply, manager, showDialog] () {
+        // 定义统一的错误处理逻辑
+        auto handleError= [this] (const QString& errorMessage) {
+          showNotLoggedInDialog (qt_translate (from_qstring (errorMessage)));
+          show_login_dialog_at_button (m_loginDialog, loginButton);
+        };
+
+        if (reply->error () == QNetworkReply::NoError) {
+          // 解析响应数据
+          QByteArray    responseData= reply->readAll ();
+          QJsonDocument doc         = QJsonDocument::fromJson (responseData);
+          QJsonObject   json        = doc.object ();
+
+          if (json.contains ("success") && json["success"].toBool ()) {
+            QJsonObject userData= json["data"].toObject ();
+
+            m_userId          = userData["id"].toVariant ().toString ();
+            QString userName  = userData["username"].toString ("liii");
+            QString avatarText= userData["username"].toString ("liii").left (4);
+            QString accountEmail=
+                userData["email"].toString (qt_translate ("Email not set"));
+            QString memberType=
+                userData["memberType"].toString ("Regular User");
+            QString periodLabel=
+                userData["periodLabel"].toString ("Non-member");
+            QString periodLabelColor=
+                userData["periodLabelColor"].toString ("");
+            QString productType=
+                userData["productType"].toString ("Subscribe Now");
+
+            // 更新弹窗内容
+            updateDialogContent (true, userName, accountEmail, avatarText,
+                                 memberType, periodLabel, periodLabelColor,
+                                 productType);
+
+            syncScmGuestNotification (false);
+            syncScmMembershipNotification (true, memberType, periodLabel,
+                                           periodLabelColor, productType);
+
+            if (showDialog) {
+              show_login_dialog_at_button (m_loginDialog, loginButton);
+            }
+          }
+          else {
+            // API返回错误
+            syncScmMembershipNotification (false);
+            if (showDialog) {
+              handleError ("Login error, please log in again.");
+            }
+          }
+        }
+        else {
+          // 网络错误或HTTP错误
+          if (showDialog) {
+            handleError ("Network error, please log in later.");
+          }
+        }
+
+        // 清理资源
+        reply->deleteLater ();
+        manager->deleteLater ();
+      });
+}
+
+void
+qt_tm_widget_rep::triggerOAuth2 () {
+  // 隐藏对话框，因为需要用户进行OAuth2认证
+  if (m_loginDialog->isVisible ()) {
+    m_loginDialog->hide ();
+  }
+  // 直接调用scheme代码触发OAuth2登录流程
+  eval ("(use-modules (liii account))");
+  call ("login");
+}
+
+void
+qt_tm_widget_rep::updateLoginButtonState (bool           isLoggedIn,
+                                          const QString& displayName) {
+  if (!loginButton) return;
+
+  // 设置登录状态属性，用于QSS样式区分
+  loginButton->setProperty ("login-state",
+                            isLoggedIn ? "logged-in" : "not-logged-in");
+
+  // 未登录时显示"未登录"，已登录时不显示文字（只显示图标）
+  QString label;
+  if (!isLoggedIn) {
+    label= qt_translate ("Not logged in");
+  }
+  // 已登录时不设置文字，只显示图标
+
+  QFontMetrics  metrics (loginButton->font ());
+  const int     maxTextWidth= DpiUtils::scaled (76);
+  const QString visibleText=
+      metrics.elidedText (label, Qt::ElideRight, maxTextWidth);
+
+  loginButton->setText (visibleText);
+  loginButton->setToolTip (isLoggedIn ? qt_translate ("User Center") : label);
+  loginButton->setAccessibleName (isLoggedIn ? qt_translate ("User Center")
+                                             : label);
+
+  const int horizontalPadding= DpiUtils::scaled (26);
+  const int iconTextSpacing= visibleText.isEmpty () ? 0 : DpiUtils::scaled (6);
+  const int iconWidth      = loginButton->iconSize ().width ();
+  const int textWidth      = metrics.horizontalAdvance (visibleText);
+  const int minWidth       = DpiUtils::scaled (60);
+  const int maxWidth=
+      isLoggedIn ? DpiUtils::scaled (60) : DpiUtils::scaled (120);
+  const int rawDesiredWidth=
+      iconWidth + iconTextSpacing + textWidth + horizontalPadding;
+  const int desiredWidth= qBound (minWidth, rawDesiredWidth, maxWidth);
+
+  // 强制刷新样式以应用状态相关样式
+  loginButton->style ()->unpolish (loginButton);
+  loginButton->style ()->polish (loginButton);
+  auto applyWidth= [this, desiredWidth] () {
+    if (!loginButton) return;
+    loginButton->setMinimumWidth (desiredWidth);
+    loginButton->setMaximumWidth (desiredWidth);
+    loginButton->setFixedWidth (desiredWidth);
+    loginButton->resize (desiredWidth, loginButton->height ());
+    loginButton->updateGeometry ();
+    if (loginButton->parentWidget () && loginButton->parentWidget ()->layout ())
+      loginButton->parentWidget ()->layout ()->activate ();
+  };
+  applyWidth ();
+
+  QTimer::singleShot (0, loginButton, applyWidth);
+}
+
+void
+qt_tm_widget_rep::updateDialogContent (bool isLoggedIn, const QString& username,
+                                       const QString& email,
+                                       const QString& avatarText,
+                                       const QString& memberType,
+                                       const QString& periodLabel,
+                                       const QString& periodLabelColor,
+                                       const QString& productType) {
+  // 保存会员类型
+  m_memberType= memberType;
+
+  updateLoginButtonState (isLoggedIn, isLoggedIn ? username : QString ());
+
+  // 更新VIP按钮可见性（根据memberType判断）
+  updateVipButtonVisibility (isLoggedIn, memberType);
+
+  // 更新对话框中的UI组件内容
+  if (nameLabel) {
+    nameLabel->setText (username);
+  }
+  if (accountIdLabel) {
+    accountIdLabel->setText (email);
+  }
+  if (avatarLabel) {
+    avatarLabel->setText (avatarText);
+  }
+
+  // 更新会员类型标题
+  if (membershipTitleLabel) {
+    membershipTitleLabel->setText (
+        qt_translate (memberType.toStdString ().c_str ()));
+  }
+
+  // 更新会员期限标签
+  if (membershipPeriodLabel) {
+    membershipPeriodLabel->setText (
+        qt_translate (periodLabel.toStdString ().c_str ()));
+
+    // 根据periodLabelColor设置文本颜色
+    if (!periodLabelColor.isEmpty () && periodLabelColor != "undefined") {
+      membershipPeriodLabel->setStyleSheet (
+          QString ("color: %1;").arg (periodLabelColor));
+    }
+    else {
+      membershipPeriodLabel->setStyleSheet ("");
+    }
+  }
+
+  // 根据登陆与否更新按钮
+  if (loginActionButton && logoutButton) {
+    if (!isLoggedIn) {
+      loginActionButton->setVisible (true);
+      logoutButton->setVisible (false);
+      loginActionButton->setText (qt_translate ("Login"));
+    }
+    else {
+      loginActionButton->setVisible (true);
+      logoutButton->setVisible (true);
+      // 如果productType=Renew Early,后面加上♥️
+      if (productType == QStringLiteral ("Renew Early")) {
+        loginActionButton->setText (
+            qt_translate (productType.toStdString ().c_str ()) + " ♥️");
+      }
+      else {
+        loginActionButton->setText (
+            qt_translate (productType.toStdString ().c_str ()));
+      }
+    }
+  }
+}
+
+void
+qt_tm_widget_rep::showNotLoggedInDialog (const QString& errorMessage) {
+  updateDialogContent (false, qt_translate ("Not logged in"), errorMessage,
+                       "liii", qt_translate ("Non-member"), "", "", "");
+}
+
+void
+qt_tm_widget_rep::updateVipButtonVisibility (bool           isLoggedIn,
+                                             const QString& memberType) {
+  if (!vipButton) {
+    return;
+  }
+
+  // 社区版不显示VIP按钮
+  if (is_community_stem ()) {
+    vipButton->hide ();
+    return;
+  }
+
+  // 未登录用户：显示VIP按钮
+  if (!isLoggedIn) {
+    vipButton->show ();
+    return;
+  }
+
+  // 已登录用户：根据memberType决定是否显示
+  // 如果memberType为空，说明还未获取用户信息，保持当前状态（不隐藏）
+  if (memberType.isEmpty ()) {
+    return;
+  }
+
+  // "Regular User"(普通用户)或"Trial Member"(体验会员)时显示
+  // 其他(Fruit User, Sprout User, Seed User, Member)时不显示
+  if (memberType == QStringLiteral ("Regular User") ||
+      memberType == QStringLiteral ("Trial Member")) {
+    vipButton->show ();
+  }
+  else {
+    vipButton->hide ();
+  }
+}
+
+void
+qt_tm_widget_rep::logout () {
+  // 没有token，直接清除UI状态
+  showNotLoggedInDialog (
+      qt_translate ("Please login to view your account information."));
+  // 关闭登录对话框
+  if (m_loginDialog && m_loginDialog->isVisible ()) {
+    m_loginDialog->hide ();
+  }
+  syncScmMembershipNotification (false);
+
+  // 通过tm_server获取QTMOAuth实例并调用clearInvalidTokens
+  if (is_server_started ()) {
+    tm_server_rep* server=
+        dynamic_cast<tm_server_rep*> (get_server ().operator->());
+    if (server && server->getAccount ()) {
+      server->getAccount ()->clearInvalidTokens ();
+    }
+  }
+}
+
+void
+qt_tm_widget_rep::openRenewalPage () {
+  // 获取当前token
+  eval ("(use-modules (liii account))");
+  string  token  = as_string (call ("account-load-token"));
+  QString q_token= to_qstring (token);
+
+  // 获取定价页面URL
+  string  pricingUrl= as_string (call ("account-oauth2-config", "pricing-url"));
+  QString q_pricingUrl= to_qstring (pricingUrl);
+
+  // 计算token的SHA256哈希值作为key参数
+  QByteArray tokenBytes= q_token.toUtf8 ();
+  QByteArray hash=
+      QCryptographicHash::hash (tokenBytes, QCryptographicHash::Sha256);
+  QString keyParam= hash.toHex ();
+
+  // 构建完整URL
+  QString fullUrl= q_pricingUrl + "?key=" + keyParam + "&user=" + m_userId;
+
+  // 打开浏览器跳转到续费页面
+  QDesktopServices::openUrl (QUrl (fullUrl));
+}
+
+void
+qt_tm_widget_rep::checkNetworkAvailable () {
+  QNetworkAccessManager* manager= new QNetworkAccessManager (mainwindow ());
+  QUrl                   testUrl ("https://www.liiistem.cn");
+  QNetworkRequest        request (testUrl);
+  QNetworkReply*         reply= manager->head (request);
+
+  QObject::connect (reply, &QNetworkReply::finished, [this, reply] () {
+    bool success= (reply->error () == QNetworkReply::NoError);
+    reply->deleteLater ();
+    bool isLoggedIn= as_bool (call ("logged-in?"));
+    syncScmGuestNotification (!is_community_stem () && !isLoggedIn && success);
+  });
+}
+
+// 检查版本更新，根据条件显示提示条
+// 流程：1.检查稍后提醒时间 -> 2.获取远程版本 -> 3.比较并显示
+// 社区版和商业版都显示版本更新提示，但跳转到不同的官网
+void
+qt_tm_widget_rep::checkVersionUpdate () {
+  eval ("(use-modules (utils misc version-update))");
+
+  // 检查是否处于稍后提醒期间
+  bool shouldCheck= as_bool (call ("should-check-version-update?"));
+  if (!shouldCheck) {
+    syncScmUpdateNotification (false);
+    return;
+  }
+
+  // 检查是否有 mock 版本（用于测试）
+  object mockVersion= call ("get-mock-remote-version");
+  bool   hasMock    = !is_bool (mockVersion) || as_bool (mockVersion);
+
+  if (hasMock) {
+    // 使用 mock 版本进行测试
+    QString remoteVersion= to_qstring (as_string (mockVersion));
+    QString localVersion = XMACS_VERSION;
+
+    if (isVersionNewer (remoteVersion, localVersion)) {
+      syncScmUpdateNotification (true, remoteVersion);
+    }
+    else {
+      syncScmUpdateNotification (false);
+    }
+    return;
+  }
+
+  // 发送HTTP请求获取远程版本
+  // 商业版和社区版使用不同的版本号接口
+  QString versionUrl;
+  if (is_community_stem ()) {
+    versionUrl= "https://liiistem.cn/mogan_latest_version.tm";
+  }
+  else {
+    versionUrl= "https://liiistem.cn/latest_version.tm";
+  }
+
+  QNetworkAccessManager* manager= new QNetworkAccessManager (mainwindow ());
+  QNetworkRequest        request (versionUrl);
+  request.setRawHeader ("User-Agent",
+                        to_qstring (stem_user_agent ()).toUtf8 ());
+
+  QNetworkReply* reply= manager->get (request);
+  QObject::connect (reply, &QNetworkReply::finished, [this, reply, manager] () {
+    if (reply->error () == QNetworkReply::NoError) {
+      QByteArray data         = reply->readAll ();
+      QString    remoteVersion= parseVersionFromTM (data);
+      QString    localVersion = XMACS_VERSION;
+
+      if (!remoteVersion.isEmpty ()) {
+        qDebug () << "[VersionUpdate] Parsed remote version:" << remoteVersion;
+      }
+
+      if (remoteVersion.isEmpty ()) {
+        qDebug () << "[VersionUpdate] Failed to parse version from response";
+        syncScmUpdateNotification (false);
+      }
+      else if (isVersionNewer (remoteVersion, localVersion)) {
+        syncScmUpdateNotification (true, remoteVersion);
+      }
+      else {
+        syncScmUpdateNotification (false);
+      }
+    }
+    else {
+      qDebug () << "[VersionUpdate] Failed to fetch remote version:"
+                << reply->errorString ();
+      syncScmUpdateNotification (false);
+    }
+    reply->deleteLater ();
+    manager->deleteLater ();
+  });
+}
+
+QString
+qt_tm_widget_rep::parseVersionFromTM (const QByteArray& data) {
+  QString content= QString::fromUtf8 (data);
+  // 解析 TeXmacs 格式的 <\body> 标签内容
+  QRegularExpression      re ("<\\\\?body>\\s*([\\d\\.\\-rc]+)");
+  QRegularExpressionMatch match= re.match (content);
+  return match.captured (1).trimmed ();
+}
+
+bool
+qt_tm_widget_rep::isVersionNewer (const QString& remote, const QString& local) {
+  // 提取纯数字版本号（去掉 -rcX 后缀）
+  QString remoteClean= remote.split ("-")[0];
+  QString localClean = local.split ("-")[0];
+
+  // 语义化版本号比较（只比较前三位）
+  QStringList remoteParts= remoteClean.split (".");
+  QStringList localParts = localClean.split (".");
+
+  // 只比较前三位版本号
+  for (int i= 0; i < 3; i++) {
+    int remoteNum= (i < remoteParts.size ()) ? remoteParts[i].toInt () : 0;
+    int localNum = (i < localParts.size ()) ? localParts[i].toInt () : 0;
+
+    if (remoteNum != localNum) {
+      return remoteNum > localNum;
+    }
+  }
+  return false; // 版本相同
+}

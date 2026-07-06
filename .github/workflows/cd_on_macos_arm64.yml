@@ -1,0 +1,56 @@
+name: CD for Mogan STEM on macOS arm64
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  macosbuild:
+    strategy:
+      matrix:
+        os: [macos-14]
+        arch: [arm64]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: v2.9.3
+          actions-cache-folder: '.xmake-cache'
+      - name: xmake repo --update
+        run: xmake repo --update
+      - name: Config and build goldfish
+        run: |
+          xmake config -m release -a ${{ matrix.arch }} -vD --yes
+          xmake build goldfish
+          ls -la TeXmacs/plugins/goldfish/bin/ || echo "goldfish bin dir not found"
+      - name: Package with Goldfish
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          chmod +x TeXmacs/plugins/goldfish/bin/goldfish
+          TeXmacs/plugins/goldfish/bin/goldfish packages/macos/package.scm
+      - name: Upload 
+        uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          path: build/*.dmg
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          prerelease: true
+          files: build/*.dmg

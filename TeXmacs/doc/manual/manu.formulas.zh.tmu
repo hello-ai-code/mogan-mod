@@ -1,0 +1,171 @@
+<TMU|<tuple|1.1.0|2025.2.2>>
+
+<style|<tuple|tmudoc|chinese|number-europe>>
+
+<\body>
+  <tmdoc-title|数学公式><label|sec-man-math>
+
+  Mogan/Liii STEM 完美解决了数学公式的编辑不够快速这一问题。当光标处于公式中时，模式工具栏和焦点工具栏就会相应的变换并提供数学符号输入方法。类似地，键盘的行为也会跟着改变，以便您快速输入数学公式。比如，输入<key|- \<gtr\>>可得<math|<key|\<rightarrow\>>>。上述行为改变将在<hlink|数学公式快速编辑|https://liiistem.cn/docs/guide-equation.html>中详细说明。
+
+  <section*|0. \ 本文中的符号约定>
+
+  <\itemize>
+    <item><key|I>表示大写 I，<key|i>表示小写 i 。不同的键盘按键之间若没有加号，表示需要按顺序按下。反之，若有加号，则表示需要同时按下。
+
+    <item><key|Tab>表示的是 Tab循环中的变体，比如<math|\<nabla\>>的输入方法为<key|V>再按两次次<key|Tab>，<math|\<Phi\>>的输入方法是<key|V>再按一下<key|Tab>，然而在文中我们将不区分<key|Tab>的输入次数，统一的将<math|\<nabla\>>和<math|\<Phi\>>的快捷键表述为<key|V Tab> 。
+  </itemize>
+
+  \;
+
+  <section|在文档中输入数学公式><label|sec-man-enter-math>
+
+  Mogan/Liii STEM 对数学公式有着非常强大的支持。Mogan/Liii STEM 提供有四种数学模式下的环境：
+
+  <\description>
+    <item*|<with|font|fireflysung|<menu|插入|数学|行内公式>>或者<key|$>>
+
+    这个菜单条目输入的是像<math|a<rsup|2>+b<rsup|2>=c<rsup|2>>这样样嵌在文本段落中的简短公式。注意公式是一种特殊的排版方式，不会占用过多的垂直方向上的空间。比如求和符号的上下界限往往处于右边（<math|<with|math-display|false|<big|sum><rsup|n><rsub|i=1>>>）。此时选中整个数学公式，在菜单栏<menu|格式|展示风格>中选择打开，求和符号的界限就会显示在其上下两侧（<with|math-display|true|<math|<big|sum><rsup|n><rsub|i=1>>>）。默认情况下，展示风格是关闭的。
+
+    <item*|<menu|插入|数学|单行公式>或者<key|Alt+$>>
+
+    这个条目适合输入较长的公式，比如：
+
+    <\equation*>
+      x<rsup|n>+y<rsup|n>=z<rsup|n>,
+    </equation*>
+
+    公式的排版会占据整个段落。使用快捷键<key|Ctrl #>或者使用焦点工具栏的<key*|123>按钮可以给公式加上编号（或者删去编号）。快捷键<shortcut|(variant-circulate (focus-tree) #t)>能够让公式在行内模式和单行模式间切换。
+
+    <item*|<menu|插入|数学|多行公式>（eqnarray)或者<key|Alt+&>>
+
+    这个条目创建了一个eqnarray<compound|markup|>环境，一个三列宽的类似<hlink|表格|https://liiistem.cn/docs/guide-table.html>的环境。在这个环境中可以方便地输入多行公式，比如：
+
+    <\eqnarray*>
+      <tformat|<table|<row|<cell|x+0>|<cell|=>|<cell|x>>|<row|<cell|x+<around*|(|-x|)>>|<cell|=>|<cell|0>>|<row|<cell|x+y >|<cell|=>|<cell|y+x>>|<row|<cell|<around*|(|x+y|)>+z>|<cell|=>|<cell|x+<around*|(|y+z|)>>>>>
+    </eqnarray*>
+
+    第一列右对齐，第二列居中，第三列左对齐。 eqnarray<compound|markup|>环境的典型用途就是显示多步计算：
+
+    <\eqnarray*>
+      <tformat|<table|<row|<cell|<around*|(|e<rsup|sin x>+sin<rsup|> e<rsup|x>|)><rprime|'>>|<cell|=>|<cell|<around*|(|e<rsup|sin x>|)><rprime|'>+<around*|(|sin e<rsup|x>|)><rprime|'>>>|<row|<cell|>|<cell|=>|<cell|<around*|(|sin x|)><rprime|'>e<rsup|sin x>+<around*|(|e<rsup|x>|)><rprime|'>cos e<rsup|x>>>|<row|<cell|>|<cell|=>|<cell|e<rsup|sin x> cos x\<noplus\>+e<rsup|x> cos e<rsup|x>,>>>>
+    </eqnarray*>
+
+    在这个例子中，大多数行的第一列是空着的。
+
+    <item*|<menu|插入|数学|多行公式>(align)或者<key|Ctrl+$>>
+
+    这个条目创建了一个align环境，一个两列宽的类似表格环境。与eqnarray不同的是，这个环境的排版方式是现代推荐的，且列对齐更加精确，比如：
+
+    <\align>
+      <tformat|<table|<row|<cell|e<rsup|i\<theta\>>=>|<cell|<around*|(|1-<frac|\<theta\><rsup|2>|2!>+<frac|\<theta\><rsup|4>|4!>-\<cdots\>|)>+\<mathi\><around*|(|\<theta\>-<frac|\<theta\><rsup|3>|3!>+<frac|\<theta\><rsup|>|5!>-\<ldots\>|)>>>|<row|<cell|=>|<cell|cos\<theta\>+\<mathi\> sin\<theta\>>>>>
+    </align>
+
+    在这个环境中，等号和不等号通常在左列。
+  </description>
+
+  \;
+
+  <section|输入数学符号><label|sec-man-symbols>
+
+  使用<key*|Tab>输入希腊字母，比如，<key*|a><key*|Tab>输入<math|\<alpha\>>，<key*|G><key|Tab>输入<math|<key|\<Gamma\>>>。类似地，手写体、拉丁字符、黑板粗体等字体可以通过这种被成为<hlink|<key|Tab>循环|https://liiistem.cn/docs/guide-equation.html>的方式得到。
+
+  除字体外部分特殊的数学符号也可以通过<hlink|<key|Tab>循环|https://liiistem.cn/docs/guide-equation.html>的方式输入，另一部分数学字符则使用<hlink|乐高符号|https://liiistem.cn/docs/guide-equation.html>输入：比如<key|- \<gtr\>>得到<math|<op|<key|\<rightarrow\>>>>，<key|- - \<gtr\>>得到<math|<op|<key|\<longrightarrow\>>>>和<key|\<gtr\> =>得到<math|<op|<key|\<geqslant\>>>>。<math|>
+
+  同时我们官网提供<hlink|输入法速查表|https://liiistem.cn/docs/guide-keyboard-shortcuts.html>，所有符号的快捷键可以从其中找到。
+
+  <section|主要的数学结构><label|sec-man-main>
+
+  最主要的几个数学结构可使用<key|Alt+>前缀以如下方式创建：<math|>
+
+  <big-table|<descriptive-table|<tformat|<table|<row|<cell|快捷键>|<cell|目标>|<cell|例子>>|<row|<cell|<key|Alt+f>>|<cell|分式>|<cell|<math|<frac|a|b+c>>>>|<row|<cell|<key|Alt+s>>|<cell|平方根>|<cell|<math|<sqrt|x+y>>>>|<row|<cell|<key|Alt+s><key|Tab>>|<cell|<math|n>次方根>|<cell|<math|<sqrt|x<rsup|3>+y<rsup|3>|3>>>>|<row|<cell|<key|Alt+n>>|<cell|否定>|<cell|<math|<neg|<frac|a|b+c>>>>>>>>|主要数学标记的创建>
+
+  下面是撇和上下标：<math|>
+
+  <big-table|<descriptive-table|<tformat|<table|<row|<cell|快捷键>|<cell|目标>|<cell|例子>>|<row|<cell|<key|'>>|<cell|撇号>|<cell|<math|f<rprime|'>> or <math|<around|(|g+h|)><rprime|'''>>>>|<row|<cell|<key|‘>>|<cell|反撇号>|<cell|<math|<lprime|‘>f>>>|<row|<cell|<key|_>>|<cell|下标>|<cell|<math|x<rsub|n>> or <math|x<rsub|i<rsub|3>>>>>|<row|<cell|<key|^>>|<cell|上标>|<cell|<math|x<rsup|2>>, <math|x<rsub|n><rsup|2>> or <math|\<mathe\><rsup|\<mathe\><rsup|x>>>>>>>>|撇、上下标的创建>
+
+  另外一些重要的数学结构实际上是广义的表格，如矩阵、行列式等，详细请参见<hlink|表格结构|https://liiistem.cn/docs/guide-table.html>。
+
+  <section|输入大型分隔符><label|sec-man-large>
+
+  数学公式中的括号必须匹配：在你输入“<key|(>”时，Mogan/Liii STEM 会自动插入“<key|)>”。你可以<menu|Edit|Preferences|Keyboard|Automatic brackets|Disable>禁用此特性。
+
+  有时，你不需要封闭的括号，或者你的括号匹配的种类不同。没有关系：如果光标正好在右括号的前面<math|<around*|(|a,b<cursor>|)>>，此时按下<key|]>可以得到表达式<math|<around|(|a,b|]>>。类似地，删除一个括号会导致其变为不可见括号，然后你就可以使用任意类型左或者右括号去替换。<math|>
+
+  默认地，括号的大小会随着其中公式的大小自动调整。
+
+  对某些分隔符，如 <math|<key|\|>>，其左右符号恰好一致。比如输入垂直方向上的竖条<key|\|>产生的是绝对的值。小竖条分隔符通过<key|\| Tab>得到。大竖条分隔符同样是<key|\| Tab>（二者都是<key|(>的<key|Tab>循环）。在<TeX>和<LaTeX>中，这类大型分隔符是不存在的；他们可以用来输入下列公式<math|<scm|>>
+
+  <\equation*>
+    <around|\<langle\>|<frac|a|b+c><mid|\|><frac|p|q+r><mid|\|><frac|a|b+c>|\<rangle\>>.
+  </equation*>
+
+  中间分隔符也是非常常见的一种分隔符，二元关系整除可以通过 <key|\| var >得到。
+
+  在Mogan/Liii STEM中，大型分隔符分为左分隔符，右分隔符和中间分隔符。默认地，<em|<em|<em|<em|<key|(>>>>>，<key|[>，<key|{>是左分隔符； <key|)>，<key|]>，<key*|}>是右分隔符。
+
+  有时候，你可能需要固定大小的大型分隔符，而不是自动调整。这可以通过改变分隔符之间的表达式大小的方法实现，具体是使用菜单项<menu|Format|Transform|Linear 2D>。
+
+  <section|输入大型算符><label|sec-man-big>
+
+  下面的快捷键用于输入大型算符：
+
+  <\big-table>
+    <descriptive-table|<tformat|<cwith|3|7|2|2|cell-halign|c>|<cwith|3|7|4|4|cell-halign|c>|<cwith|4|7|1|1|cell-rborder|0.5ln>|<cwith|4|7|1|1|cell-bborder|0.5ln>|<cwith|4|7|1|1|cell-lborder|0.5ln>|<cwith|3|7|1|1|cell-lsep|1spc>|<cwith|3|7|1|1|cell-rsep|1spc>|<cwith|3|7|1|1|cell-bsep|1spc>|<cwith|3|7|1|1|cell-tsep|1spc>|<cwith|5|5|1|1|cell-rborder|0.5ln>|<cwith|5|5|1|1|cell-bborder|0.5ln>|<cwith|5|5|1|1|cell-lborder|0.5ln>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|4|7|3|3|cell-rborder|0.5ln>|<cwith|4|7|3|3|cell-bborder|0.5ln>|<cwith|3|7|3|3|cell-lsep|1spc>|<cwith|3|7|3|3|cell-rsep|1spc>|<cwith|3|7|3|3|cell-bsep|1spc>|<cwith|3|7|3|3|cell-tsep|1spc>|<cwith|2|2|2|2|cell-halign|c>|<cwith|2|2|4|4|cell-halign|c>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|1|1|cell-rborder|0.5ln>|<cwith|2|2|1|1|cell-bborder|0.5ln>|<cwith|2|2|1|1|cell-lborder|0.5ln>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|1|1|cell-rborder|0.5ln>|<cwith|2|2|1|1|cell-bborder|0.5ln>|<cwith|2|2|1|1|cell-lborder|0.5ln>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|3|3|cell-lsep|1spc>|<cwith|2|2|3|3|cell-rsep|1spc>|<cwith|2|2|3|3|cell-bsep|1spc>|<cwith|2|2|3|3|cell-tsep|1spc>|<cwith|2|2|3|3|cell-rborder|0.5ln>|<cwith|2|2|3|3|cell-bborder|0.5ln>|<cwith|2|2|3|3|cell-lsep|1spc>|<cwith|2|2|3|3|cell-rsep|1spc>|<cwith|2|2|3|3|cell-bsep|1spc>|<cwith|2|2|3|3|cell-tsep|1spc>|<cwith|2|2|3|3|cell-rborder|0.5ln>|<cwith|2|2|3|3|cell-bborder|0.5ln>|<cwith|2|2|3|3|cell-lsep|1spc>|<cwith|2|2|3|3|cell-rsep|1spc>|<cwith|2|2|3|3|cell-bsep|1spc>|<cwith|2|2|3|3|cell-tsep|1spc>|<cwith|1|1|2|2|cell-halign|c>|<cwith|1|1|4|4|cell-halign|c>|<cwith|1|-1|2|2|cell-rborder|1ln>|<cwith|9|9|2|2|cell-halign|c>|<cwith|9|9|1|1|cell-rborder|0.5ln>|<cwith|9|9|1|1|cell-bborder|0.5ln>|<cwith|9|9|1|1|cell-lsep|1spc>|<cwith|9|9|1|1|cell-rsep|1spc>|<cwith|9|9|1|1|cell-bsep|1spc>|<cwith|9|9|1|1|cell-tsep|1spc>|<cwith|7|7|4|4|cell-halign|c>|<cwith|7|7|3|3|cell-rborder|0.5ln>|<cwith|7|7|3|3|cell-bborder|0.5ln>|<cwith|7|7|3|3|cell-lsep|1spc>|<cwith|7|7|3|3|cell-rsep|1spc>|<cwith|7|7|3|3|cell-bsep|1spc>|<cwith|7|7|3|3|cell-tsep|1spc>|<cwith|7|7|4|4|cell-halign|c>|<cwith|7|7|3|3|cell-rborder|0.5ln>|<cwith|7|7|3|3|cell-bborder|0.5ln>|<cwith|7|7|3|3|cell-lsep|1spc>|<cwith|7|7|3|3|cell-rsep|1spc>|<cwith|7|7|3|3|cell-bsep|1spc>|<cwith|7|7|3|3|cell-tsep|1spc>|<cwith|8|8|4|4|cell-halign|c>|<cwith|8|8|3|3|cell-rborder|0.5ln>|<cwith|8|8|3|3|cell-bborder|0.5ln>|<cwith|8|8|3|3|cell-lsep|1spc>|<cwith|8|8|3|3|cell-rsep|1spc>|<cwith|8|8|3|3|cell-bsep|1spc>|<cwith|8|8|3|3|cell-tsep|1spc>|<cwith|6|6|4|4|cell-halign|c>|<cwith|6|6|3|3|cell-rborder|0.5ln>|<cwith|6|6|3|3|cell-bborder|0.5ln>|<cwith|6|6|3|3|cell-lsep|1spc>|<cwith|6|6|3|3|cell-rsep|1spc>|<cwith|6|6|3|3|cell-bsep|1spc>|<cwith|6|6|3|3|cell-tsep|1spc>|<cwith|6|6|4|4|cell-halign|c>|<cwith|6|6|3|3|cell-rborder|0.5ln>|<cwith|6|6|3|3|cell-bborder|0.5ln>|<cwith|6|6|3|3|cell-lsep|1spc>|<cwith|6|6|3|3|cell-rsep|1spc>|<cwith|6|6|3|3|cell-bsep|1spc>|<cwith|6|6|3|3|cell-tsep|1spc>|<cwith|5|5|4|4|cell-halign|c>|<cwith|5|5|3|3|cell-rborder|0.5ln>|<cwith|5|5|3|3|cell-bborder|0.5ln>|<cwith|5|5|3|3|cell-lsep|1spc>|<cwith|5|5|3|3|cell-rsep|1spc>|<cwith|5|5|3|3|cell-bsep|1spc>|<cwith|5|5|3|3|cell-tsep|1spc>|<cwith|5|5|4|4|cell-halign|c>|<cwith|5|5|3|3|cell-rborder|0.5ln>|<cwith|5|5|3|3|cell-bborder|0.5ln>|<cwith|5|5|3|3|cell-lsep|1spc>|<cwith|5|5|3|3|cell-rsep|1spc>|<cwith|5|5|3|3|cell-bsep|1spc>|<cwith|5|5|3|3|cell-tsep|1spc>|<cwith|5|5|3|3|cell-rborder|0.5ln>|<cwith|5|5|3|3|cell-bborder|0.5ln>|<cwith|5|5|3|3|cell-lsep|1spc>|<cwith|5|5|3|3|cell-rsep|1spc>|<cwith|5|5|3|3|cell-bsep|1spc>|<cwith|5|5|3|3|cell-tsep|1spc>|<cwith|4|4|4|4|cell-halign|c>|<cwith|4|4|3|3|cell-lsep|1spc>|<cwith|4|4|3|3|cell-rsep|1spc>|<cwith|4|4|3|3|cell-bsep|1spc>|<cwith|4|4|3|3|cell-tsep|1spc>|<cwith|4|4|4|4|cell-halign|c>|<cwith|4|4|3|3|cell-rborder|0.5ln>|<cwith|4|4|3|3|cell-bborder|0.5ln>|<cwith|4|4|3|3|cell-lsep|1spc>|<cwith|4|4|3|3|cell-rsep|1spc>|<cwith|4|4|3|3|cell-bsep|1spc>|<cwith|4|4|3|3|cell-tsep|1spc>|<table|<row|<cell|快捷键>|<cell|效果>|<cell|快捷键>|<cell|效果>>|<row|<cell|<key|I><key|Tab>>|<cell|<math|<with|math-display|true|<big|int>>>>|<cell|<key|@><key|I>>|<cell|<math|<with|math-display|true|<big|oint>>>>>|<row|<cell|<key|P><key|Tab>>|<cell|<math|<with|math-display|true|<big|prod>>>>|<cell|<key|Shift+F5 a>>|<cell|<math|<big|amalg>>>>|<row|<cell|<key|S Tab>>|<cell|<math|<with|math-display|true|<big|sum>>>>|<cell|<key|@><key|+><key|Tab>>|<cell|<math|<with|math-display|true|<big|oplus>>>>>|<row|<cell|<key|@ *><key|Tab>>|<cell|<math|<with|math-display|true|<big|otimes>>>>|<cell|<key|@ .><key|Tab>>|<cell|<math|<with|math-display|true|<big|odot>>>>>|<row|<cell|<key|U Tab>>|<cell|<math|<with|math-display|true|<big|cup>>>>|<cell|<key|N Tab>>|<cell|<math|<with|math-display|true|<big|cap>>>>>|<row|<cell|<key|Shift+5>>|<cell|<math|<with|math-display|true|<big|vee>>>>|<cell|<key|Shift+7>>|<cell|<math|<with|math-display|true|<big|wedge>>>>>|<row|<cell|<key|I I I><key|Tab>>|<cell|<math|<big|iiint>>>|<cell|<key|Shift+F5 U +>>|<cell|<math|<big|pluscup>>>>|<row|<cell|<key|I I><key|Tab>>|<cell|<math|<big|iint>>>|<cell|<key|I><key|Tab><key|.>>|<cell|<math|<big|idotsint>>>>|<row|<cell|<key|Shift+F5 N Tab>>|<cell| <math|<big|sqcap>>>|<cell|<key|@><key|I I>>|<cell| \ <math|<big|oiint>>>>|<row|<cell|<key|Shift+F5 U Tab>>|<cell| <math|<big|box>>>|<cell|<key|Shift+F5 U Tab>>|<cell| \ <math|<big|sqcup>>>>|<row|<cell|<key|Shift+F5 W Tab>>|<cell|<math|> <math|<big|triangleup>>>|<cell|<key|Shift+F5 W Tab>>|<cell| \ <math|<big|curlywedge>>>>|<row|<cell|<key|Shift+F5 V Tab>>|<cell| <math|<big|triangledown>>>|<cell|<key|Shift+F5 V Tab>>|<cell| \ <math|<big|curlyvee>>>>|<row|<cell|<key|Shift+F5 B><key|Tab>>|<cell| <math|> <math|<big|interleave>>>|<cell|<key|Shift+F5 B>>|<cell| \ <math|<big|parallel>>>>>>>
+  </big-table|大型算符>
+
+  标记周围的浅蓝色小框显示了这些大型算符的作用域。<math|>
+
+  <section|加宽的顶标><label|sec-man-wide>
+
+  下表展示的是如何在符号乃至整个公式上打上顶标。一般来说，顶标会随着下面公式的加宽而加宽。
+
+  <\big-table>
+    <descriptive-table|<tformat|<cwith|3|8|3|3|cell-halign|c>|<cwith|3|8|5|5|cell-halign|c>|<cwith|4|8|1|1|cell-rborder|0.5ln>|<cwith|4|8|1|1|cell-bborder|0.5ln>|<cwith|4|8|1|1|cell-lborder|0.5ln>|<cwith|3|8|1|1|cell-lsep|1spc>|<cwith|3|8|1|1|cell-rsep|1spc>|<cwith|3|8|1|1|cell-bsep|1spc>|<cwith|3|8|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|4|8|4|4|cell-rborder|0.5ln>|<cwith|4|8|4|4|cell-bborder|0.5ln>|<cwith|3|8|4|4|cell-lsep|1spc>|<cwith|3|8|4|4|cell-rsep|1spc>|<cwith|3|8|4|4|cell-bsep|1spc>|<cwith|3|8|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-rborder|0.5ln>|<cwith|5|5|4|4|cell-bborder|0.5ln>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|2|2|3|3|cell-halign|c>|<cwith|2|2|5|5|cell-halign|c>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|1|1|cell-rborder|0.5ln>|<cwith|2|2|1|1|cell-bborder|0.5ln>|<cwith|2|2|1|1|cell-lborder|0.5ln>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|1|1|cell-rborder|0.5ln>|<cwith|2|2|1|1|cell-bborder|0.5ln>|<cwith|2|2|1|1|cell-lborder|0.5ln>|<cwith|2|2|1|1|cell-lsep|1spc>|<cwith|2|2|1|1|cell-rsep|1spc>|<cwith|2|2|1|1|cell-bsep|1spc>|<cwith|2|2|1|1|cell-tsep|1spc>|<cwith|2|2|4|4|cell-lsep|1spc>|<cwith|2|2|4|4|cell-rsep|1spc>|<cwith|2|2|4|4|cell-bsep|1spc>|<cwith|2|2|4|4|cell-tsep|1spc>|<cwith|2|2|4|4|cell-rborder|0.5ln>|<cwith|2|2|4|4|cell-bborder|0.5ln>|<cwith|2|2|4|4|cell-lsep|1spc>|<cwith|2|2|4|4|cell-rsep|1spc>|<cwith|2|2|4|4|cell-bsep|1spc>|<cwith|2|2|4|4|cell-tsep|1spc>|<cwith|2|2|4|4|cell-rborder|0.5ln>|<cwith|2|2|4|4|cell-bborder|0.5ln>|<cwith|2|2|4|4|cell-lsep|1spc>|<cwith|2|2|4|4|cell-rsep|1spc>|<cwith|2|2|4|4|cell-bsep|1spc>|<cwith|2|2|4|4|cell-tsep|1spc>|<cwith|1|1|3|3|cell-halign|c>|<cwith|1|1|5|5|cell-halign|c>|<cwith|1|-1|3|3|cell-rborder|1ln>|<cwith|3|3|3|3|cell-halign|c>|<cwith|3|3|5|5|cell-halign|c>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|3|3|cell-rborder|1ln>|<cwith|4|4|5|5|cell-halign|c>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|4|4|4|4|cell-rborder|0.5ln>|<cwith|4|4|4|4|cell-bborder|0.5ln>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|4|4|4|4|cell-rborder|0.5ln>|<cwith|4|4|4|4|cell-bborder|0.5ln>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|5|5|5|5|cell-halign|c>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-rborder|0.5ln>|<cwith|5|5|4|4|cell-bborder|0.5ln>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-rborder|0.5ln>|<cwith|5|5|4|4|cell-bborder|0.5ln>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|1|-1|1|1|cell-halign|c>|<cwith|1|-1|4|4|cell-halign|c>|<cwith|1|-1|2|2|cell-halign|c>|<cwith|3|3|3|3|cell-halign|c>|<cwith|3|3|5|5|cell-halign|c>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|1|1|cell-rborder|0.5ln>|<cwith|3|3|1|1|cell-bborder|0.5ln>|<cwith|3|3|1|1|cell-lborder|0.5ln>|<cwith|3|3|1|1|cell-lsep|1spc>|<cwith|3|3|1|1|cell-rsep|1spc>|<cwith|3|3|1|1|cell-bsep|1spc>|<cwith|3|3|1|1|cell-tsep|1spc>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|4|4|cell-rborder|0.5ln>|<cwith|3|3|4|4|cell-bborder|0.5ln>|<cwith|3|3|4|4|cell-lsep|1spc>|<cwith|3|3|4|4|cell-rsep|1spc>|<cwith|3|3|4|4|cell-bsep|1spc>|<cwith|3|3|4|4|cell-tsep|1spc>|<cwith|3|3|3|3|cell-rborder|1ln>|<cwith|3|3|1|1|cell-halign|c>|<cwith|3|3|4|4|cell-halign|c>|<cwith|3|3|2|2|cell-halign|c>|<cwith|4|4|5|5|cell-halign|c>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|4|4|4|4|cell-rborder|0.5ln>|<cwith|4|4|4|4|cell-bborder|0.5ln>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|4|4|4|4|cell-rborder|0.5ln>|<cwith|4|4|4|4|cell-bborder|0.5ln>|<cwith|4|4|4|4|cell-lsep|1spc>|<cwith|4|4|4|4|cell-rsep|1spc>|<cwith|4|4|4|4|cell-bsep|1spc>|<cwith|4|4|4|4|cell-tsep|1spc>|<cwith|4|4|4|4|cell-halign|c>|<cwith|5|5|5|5|cell-halign|c>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-rborder|0.5ln>|<cwith|5|5|4|4|cell-bborder|0.5ln>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-rborder|0.5ln>|<cwith|5|5|4|4|cell-bborder|0.5ln>|<cwith|5|5|4|4|cell-lsep|1spc>|<cwith|5|5|4|4|cell-rsep|1spc>|<cwith|5|5|4|4|cell-bsep|1spc>|<cwith|5|5|4|4|cell-tsep|1spc>|<cwith|5|5|4|4|cell-halign|c>|<cwith|4|5|3|3|cell-halign|c>|<cwith|4|5|1|1|cell-rborder|0.5ln>|<cwith|4|5|1|1|cell-bborder|0.5ln>|<cwith|4|5|1|1|cell-lborder|0.5ln>|<cwith|4|5|1|1|cell-lsep|1spc>|<cwith|4|5|1|1|cell-rsep|1spc>|<cwith|4|5|1|1|cell-bsep|1spc>|<cwith|4|5|1|1|cell-tsep|1spc>|<cwith|4|4|1|1|cell-rborder|0.5ln>|<cwith|4|4|1|1|cell-bborder|0.5ln>|<cwith|4|4|1|1|cell-lborder|0.5ln>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|5|3|3|cell-rborder|1ln>|<cwith|4|4|3|3|cell-halign|c>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|1|1|cell-rborder|0.5ln>|<cwith|4|4|1|1|cell-bborder|0.5ln>|<cwith|4|4|1|1|cell-lborder|0.5ln>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|1|1|cell-rborder|0.5ln>|<cwith|4|4|1|1|cell-bborder|0.5ln>|<cwith|4|4|1|1|cell-lborder|0.5ln>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|3|3|cell-rborder|1ln>|<cwith|5|5|3|3|cell-halign|c>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|1|1|cell-rborder|0.5ln>|<cwith|5|5|1|1|cell-bborder|0.5ln>|<cwith|5|5|1|1|cell-lborder|0.5ln>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|1|1|cell-rborder|0.5ln>|<cwith|5|5|1|1|cell-bborder|0.5ln>|<cwith|5|5|1|1|cell-lborder|0.5ln>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|3|3|cell-rborder|1ln>|<cwith|4|5|1|1|cell-halign|c>|<cwith|4|5|2|2|cell-halign|c>|<cwith|4|4|3|3|cell-halign|c>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|1|1|cell-rborder|0.5ln>|<cwith|4|4|1|1|cell-bborder|0.5ln>|<cwith|4|4|1|1|cell-lborder|0.5ln>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|1|1|cell-rborder|0.5ln>|<cwith|4|4|1|1|cell-bborder|0.5ln>|<cwith|4|4|1|1|cell-lborder|0.5ln>|<cwith|4|4|1|1|cell-lsep|1spc>|<cwith|4|4|1|1|cell-rsep|1spc>|<cwith|4|4|1|1|cell-bsep|1spc>|<cwith|4|4|1|1|cell-tsep|1spc>|<cwith|4|4|3|3|cell-rborder|1ln>|<cwith|4|4|1|1|cell-halign|c>|<cwith|4|4|2|2|cell-halign|c>|<cwith|5|5|3|3|cell-halign|c>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|1|1|cell-rborder|0.5ln>|<cwith|5|5|1|1|cell-bborder|0.5ln>|<cwith|5|5|1|1|cell-lborder|0.5ln>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|1|1|cell-rborder|0.5ln>|<cwith|5|5|1|1|cell-bborder|0.5ln>|<cwith|5|5|1|1|cell-lborder|0.5ln>|<cwith|5|5|1|1|cell-lsep|1spc>|<cwith|5|5|1|1|cell-rsep|1spc>|<cwith|5|5|1|1|cell-bsep|1spc>|<cwith|5|5|1|1|cell-tsep|1spc>|<cwith|5|5|3|3|cell-rborder|1ln>|<cwith|5|5|1|1|cell-halign|c>|<cwith|5|5|2|2|cell-halign|c>|<cwith|6|6|3|3|cell-halign|c>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|3|3|cell-rborder|1ln>|<cwith|6|6|1|1|cell-halign|c>|<cwith|6|6|2|2|cell-halign|c>|<cwith|6|6|3|3|cell-halign|c>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|3|3|cell-rborder|1ln>|<cwith|6|6|3|3|cell-halign|c>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|3|3|cell-rborder|1ln>|<cwith|6|6|1|1|cell-halign|c>|<cwith|6|6|2|2|cell-halign|c>|<cwith|6|6|3|3|cell-halign|c>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|1|1|cell-rborder|0.5ln>|<cwith|6|6|1|1|cell-bborder|0.5ln>|<cwith|6|6|1|1|cell-lborder|0.5ln>|<cwith|6|6|1|1|cell-lsep|1spc>|<cwith|6|6|1|1|cell-rsep|1spc>|<cwith|6|6|1|1|cell-bsep|1spc>|<cwith|6|6|1|1|cell-tsep|1spc>|<cwith|6|6|3|3|cell-rborder|1ln>|<cwith|6|6|1|1|cell-halign|c>|<cwith|6|6|2|2|cell-halign|c>|<cwith|7|7|3|3|cell-halign|c>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|3|3|cell-rborder|1ln>|<cwith|7|7|1|1|cell-halign|c>|<cwith|7|7|2|2|cell-halign|c>|<cwith|7|7|3|3|cell-halign|c>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|3|3|cell-rborder|1ln>|<cwith|7|7|3|3|cell-halign|c>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|3|3|cell-rborder|1ln>|<cwith|7|7|1|1|cell-halign|c>|<cwith|7|7|2|2|cell-halign|c>|<cwith|7|7|3|3|cell-halign|c>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|1|1|cell-rborder|0.5ln>|<cwith|7|7|1|1|cell-bborder|0.5ln>|<cwith|7|7|1|1|cell-lborder|0.5ln>|<cwith|7|7|1|1|cell-lsep|1spc>|<cwith|7|7|1|1|cell-rsep|1spc>|<cwith|7|7|1|1|cell-bsep|1spc>|<cwith|7|7|1|1|cell-tsep|1spc>|<cwith|7|7|3|3|cell-rborder|1ln>|<cwith|7|7|1|1|cell-halign|c>|<cwith|7|7|2|2|cell-halign|c>|<table|<row|<cell|快捷键>|<cell|例子>|<cell|加宽变元>|<cell|快捷键>|<cell|结果>>|<row|<cell|<key|Alt+~>>|<cell|<math|<wide|x|~>>>|<cell|<math|<wide|x+y|~>>>|<cell|<key|Alt+'>>|<cell|<math|<wide|x|\<acute\>>>>>|<row|<cell|<key|Alt+^>>|<cell|<math|<wide|x|^>>>|<cell|<math|<wide|x+y|^>>>|<cell|<key|Alt+`>>|<cell|<math|<wide|x|\<grave\>>>>>|<row|<cell|<key|Alt+ B>>|<cell|<math|<wide|x|\<bar\>>>>|<cell|<math|<wide|x+y|\<bar\>>>>|<cell|<key|Alt+.>>|<cell|<math|<wide|x|\<dot\>>>>>|<row|<cell|<key|Alt+ V>>|<cell|<math|<wide|x|\<vect\>>>>|<cell|<math|<wide|AB|\<vect\>>>>|<cell|<key|Alt+ “><math|>>|<cell|<math|<wide|x|\<ddot\>>>>>|<row|<cell|<key|Alt+ C>>|<cell|<math|<wide|x|\<check\>>>>|<cell|<math|<wide|x+y|\<check\>>>>|<cell|>|<cell|>>|<row|<cell|<key|Alt+ U>>|<cell|<math|<wide|x|\<breve\>>>>|<cell|<math|<wide|x+y|\<breve\>>>>|<cell|>|<cell|>>>>>
+  </big-table|顶标的快捷键>
+
+  \;
+
+  <section|数学符号的语义><label|sec-man-semantics-symbols>
+
+  Mogan/Liii STEM 中的数学符号都有一些属性，这些属性对应于他们想要表示的含义。例如Mogan/Liii STEM 能够知道<math|<op|+>>是一个中缀运算符，!是一个后缀，以及分隔符。
+
+  重要的数学常量<math|\<mathe\>=2.71828\<cdots\>>, <math|\<mathpi\>=3.14159\<cdots\>>和<math|\<up-i\>>在Mogan/Liii STEM中是用特殊的符号表示的。这些符号和纯粹的字符<math|e>, <math|\<pi\>>和<math|i>有着不同的字形，可以通过快捷键<key*|e Tab>, <key|p Tab>和<key|i Tab>来输入。我们建议系统性地使用这些快捷键。<math|>
+
+  相反，语义上不同的符号可能在字形上很相像。比如<math|f<around|(|x,y|)>>中的逗号分隔符，与<math|3\<comma\>14159\<cdots\>>中的小数逗号意义完全不同。请注意，这两个符号的间距规则是不一样的。语义不同但字形相同的符号称作<em|同形字符>。 注意我们的语义是纯语法的：例如，<math|+>中缀通常用于加法，但有时也用来连接字符串。然而，这两种用法在语法上没有区别，因为<math|+>符号仍然是一个二元中缀，在与其他符号的优先级上，两者也是一致的。
+
+  最容易混淆的同形字符是Liii STEM支持的非可见字符:<math|>
+
+  <\itemize>
+    <item>乘积，输入<key|*><key|Tab>。例如：<math|a*b>。<math|>
+
+    <item>函数，输入<key|space>。例如：<math|sin x>。
+
+    <item>非可见分隔符，输入<key|, Tab>。例如：矩阵<math|A=<around|(|a<rsub|i\<nocomma\>j>|)>>。<math|>
+
+    <item>非可见加法，输入<key|+><key| Tab>。例如：<math|17\<noplus\><frac*|3|8>>。
+
+    <item>非可见符号，输入<key|. Tab>。例如：递增 <math|\<nosymbol\>+1>。
+
+    <item><label|nobracket>非可见括号（主要用于内部情况）。一组匹配的非可见括号用<key|( var>输入。
+  </itemize>
+
+  再一次建议大家输入这些非可见符号的时候格外小心。尤其是区分乘法和函数的时候要注意，因为没有100%准确的方法来区分这二者（我们前面已经提到了<math|a<around|(|b+c|)>>和<math|f<around|(|x+y|)>>）。
+
+  Mogan/Liii STEM支持两种非常通用的输入同形字符的方式。一方面，我们依赖于标准变体系统。例如，<math|\<times\>>和<math|\<ast\>>分别通过<shortcut|\<times\>>和<key|* Tab>来得到。在表<nbsp><reference|homoglyph-table>中我们给出了Mogan/Liii STEM 支持的同形字符的完整列表。
+
+  <big-table|<block|<tformat|<table|<row|<cell|快捷键>|<cell|字形>|<cell|例子>|<cell|语义>>|<row|<cell|<key|*><key|Tab>>|<cell|>|<cell|<math|a*b>>|<cell|乘法>>|<row|<cell|<key|space>>|<cell|>|<cell|<math|sin x>>|<cell|函数>>|<row|<cell|<key|, Tab>>|<cell|>|<cell|<math|a<rsub|i\<nocomma\>j>=a<rsub|j\<nocomma\>i>>>|<cell|不可见分隔符>>|<row|<cell|<key|+><key|Tab>>|<cell|>|<cell|<with|mode|math|17\<noplus\><frac*|3|8>>>|<cell|不可见加法>>|<row|<key|. Tab>|<cell|>|<cell|<math|\<nosymbol\>+1>>|<cell|不可见符号>>|<row|<cell|<key|( \ Tab>>|<cell|>|<cell|<math|\<Phi\>\<equiv\><around*|\<nobracket\>|\<forall\>x,P<around*|(|x|)>|\<nobracket\>>>>|<cell|不可见括号>>|<row|<cell|<key|\|>>|<cell|<math|<around*|\|||\|>>>|<cell|<math|<around*|\||-x|\|>=<around*|\||x|\|>>>|<cell|绝对值>>|<row|<cell|<key|\| \ Tab>>|<cell|<math|\|>>|<cell|<math|<around*|{|x\<in\>\<bbb-R\>\|x\<gtr\>0|}>>>|<cell|分隔竖线>>|<row|<cell|<key|\| \ Tab>>|<cell|<math|\|>>|<cell|<math|<around*|\<langle\>|a<rsub|i><rsup|2><mid|\|>a<rsub|j><rsup|2>|\<rangle\>>>>|<cell|可拉伸的中间竖线>>|<row|<cell|<key|\| \ Tab>>|<cell|<math|\|>>|<cell|<math|11\<divides\>1001>>|<cell|整除关系>>|<row|<cell|<key|,>>|<cell|,>|<cell|<math|f<around*|(|x,y|)>>>|<cell|逗号分隔符>>|<row|<cell|<key|, Tab>>|<cell|,>|<cell|<math|123\<comma\>456>>|<cell|十进制数字逗号>>|<row|<cell|<key|.>>|<cell|.>|<cell|<math|123.456>>|<cell|十进制数字小数点>>|<row|<cell|<key|. Tab>>|<cell|.>|<cell|<math|\<mathlambda\>x\<point\>x<rsup|2>>>|<cell|点号连接符>>|<row|<cell|<key|* \ Tab>>|<cell|<math|\<cdot\>>>|<cell|<math|\<b-v\>\<cdot\>\<b-w\>>>|<cell|点乘>>|<row|<cell|<key|. \ Tab>>|<cell|<math|\<cdummy\>>>|<cell|<math|\<cdummy\>+1>>|<cell|Dummy通配符>>|<row|<cell|<key|:>>|<cell|<math|:>>|<cell|<math|<around*|{|x\<in\>E:P<around*|(|x|)>|}>>>|<cell|分隔符>>|<row|<cell|<key|: Tab>>|<cell|<math|\<of\>>>|<cell|<math|x\<of\><math-ss|Int>>>|<cell|类型满足>>|<row|<cell|<key|: Tab>>|<cell|<math|\<over\>>>|<cell|<math|121\<over\>11=11>>|<cell|除法>>|<row|<cell|<key|\\ Tab>>|<cell|<math|\\>>|<cell|<math|\\x>>|<cell|反斜杠>>|<row|<cell|<key|\\ Tab>>|<cell|<math|\\>>|<cell|<math|\<bbb-N\><rsup|\<gtr\>>=\<bbb-N\>\<setminus\><around*|{|0|}>>>|<cell|集合减法>>|<row|<cell|<key|&>>|<cell|<math|\<wedge\>>>|<cell|<math|1=1\<wedge\>2=2>>|<cell|逻辑与>>|<row|<cell|<key|* &><math|>>|<cell|<math|\<exterior\>>>|<cell|<math|\<mathd\>x\<exterior\>\<mathd\>y>>|<cell|楔积>>>>>|Mogan/<label|homoglyph-table>Liii STEM 支持的同形异义字符.>
+
+  <section|定制数学语义><label|sec-man-customized-semantics>
+
+  我们已经尽可能地支持了大多数经典的数学符号。然而，用户有时候需要自定义非标准语义的数学符号。而且，某些区域也可能需要一些未被支持的特殊符号。
+
+  Mogan/Liii STEM提供了一个非常简单的<hlink|自定义宏命令创建|https://liiistem.cn/docs/guide-macro.html>方法，用户可以自行定义
+</body>
+
+<\initial>
+  <\collection>
+    <associate|page-medium|paper>
+    <associate|page-screen-margin|false>
+    <associate|preamble|false>
+  </collection>
+</initial>

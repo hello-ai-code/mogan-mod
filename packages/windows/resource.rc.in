@@ -1,0 +1,38 @@
+// Resource file for TeXmacs' main executable.
+// Compile with windres resource.rc -O coff -o resource.rc.o and link as any
+// other object file
+
+appicon ICON "Xmacs.ico"
+
+#include <winver.h>
+
+// Version information; this, too, is used by WinSparkle
+1 VERSIONINFO
+ FILEVERSION     2025,0,4,0
+ PRODUCTVERSION  2025,0,4,0
+ FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+ FILEFLAGS       0 // indicate whether this file contains debugger information, and whether this is different from executable with same version.
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0" // US English, Unicode
+    BEGIN
+      VALUE "Comments", "Liii STEM, a scientific edition platform."
+      VALUE "CompanyName", "Liii Network\0"
+      VALUE "FileDescription", "MoganSTEM.exe\0"
+      VALUE "FileVersion", "${VERSION}\0"
+      VALUE "InternalName", "Xmacs\0"
+      VALUE "OriginalFilename", "MoganSTEM.exe\0"
+      VALUE "LegalCopyright", "Licensed under GPLv3 and Private\0"
+      VALUE "ProductName", "MoganSTEM\0"
+      VALUE "ProductVersion", "${VERSION}\0"
+    END
+  END
+
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 0x04B0
+  END
+END

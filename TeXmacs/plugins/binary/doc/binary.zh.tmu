@@ -1,0 +1,182 @@
+<TMU|<tuple|1.1.0|2025.2.2>>
+
+<style|<tuple|tmudoc|chinese|python>>
+
+<\body>
+  <tmdoc-title|二进制插件>
+
+  二进制插件是一类插件，主要用于：\ 
+
+  <\itemize>
+    <item>定位可执行文件的位置并判断可执行文件是否存在
+
+    <item>依据实际需求调用可执行文件，并封装输入的预处理和输出的后置处理逻辑
+  </itemize>
+
+  完整的文档请阅读官网的<hlink|二进制插件|https://mogan.app/zh/guide/plugins.html>页面。本文档将以Scheme会话的形式，演示如何用Scheme会话配置二进制插件。本文以<shell|python3>为例，通过<menu|Insert|Replace>可以将<shell|python3>替换为其他的二进制插件（比如<shell|gs>），本文的Scheme会话仍旧生效。
+
+  <section*|定位>
+
+  <\session|scheme|default>
+    <\folded-io|Scheme] >
+      (use-modules (binary python3))
+    <|folded-io>
+      (#1=(inlet 'supports-slidemove? supports-slidemove? 'supports-python? supports-python? 'python-launcher python-launcher 'python-utf8-command python-utf8-command 'python-serialize python-serialize 'scala-snippet-\<gtr\>texmacs scala-snippet-\<gtr\>texmacs 'scala-\<gtr\>texmacs scala-\<gtr\>texmacs 'texmacs-\<gtr\>scala texmacs-\<gtr\>scala 'python-snippet-\<gtr\>texmacs python-snippet-\<gtr\>texmacs 'python-\<gtr\>texmacs python-\<gtr\>texmacs 'texmacs-\<gtr\>python texmacs-\<gtr\>python 'julia-snippet-\<gtr\>texmacs julia-snippet-\<gtr\>texmacs ...))
+    </folded-io>
+
+    <\unfolded-io|Scheme] >
+      (find-binary-python3)
+    <|unfolded-io>
+      \<less\>url /usr/bin/python3\<gtr\>
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (has-binary-python3?)
+    <|unfolded-io>
+      #t
+    </unfolded-io>
+
+    <\input|Scheme] >
+      \;
+    </input>
+  </session>
+
+  <section*|定制>
+
+  以Python插件为例，可以通过<menu|Insert|Fold|Executable|Python>插入Python会话：
+
+  <\session|python|default>
+    <\output>
+      Python 3.12.2 [/usr/bin/python3]
+
+      Python plugin for TeXmacs.
+
+      Please see the documentation in Help -\<gtr\> Plugins -\<gtr\> Python
+    </output>
+
+    <\input>
+      \<gtr\>\<gtr\>\<gtr\>\ 
+    <|input>
+      \;
+    </input>
+  </session>
+
+  \;
+
+  默认的Python会话使用的Python解释器是由<scm|(find-binary-python3)>决定的。
+
+  <\session|scheme|default>
+    <\unfolded-io|Scheme] >
+      (find-binary-python3)
+    <|unfolded-io>
+      \<less\>url /usr/bin/python3\<gtr\>
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (version-binary-python3)
+    <|unfolded-io>
+      Python 3.12.2
+    </unfolded-io>
+
+    <\input|Scheme] >
+      (set-preference "plugin:binary:python3" "/usr/bin/python3.11")
+    </input>
+
+    <\unfolded-io|Scheme] >
+      (find-binary-python3)
+    <|unfolded-io>
+      \<less\>url /usr/bin/python3.11\<gtr\>
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (version-binary-python3)
+    <|unfolded-io>
+      Python 3.11.8
+    </unfolded-io>
+
+    <\input|Scheme] >
+      \;
+    </input>
+  </session>
+
+  \;
+
+  我们已经将<shell|python3>的默认二进制路径设置为<scm|"/usr/bin/python3.11">。此时重启墨干，就可以插入Python 3.11的Python会话：
+
+  <\session|python|default>
+    <\output>
+      Python 3.11.8 [/usr/bin/python3.11]
+
+      Python plugin for TeXmacs.
+
+      Please see the documentation in Help -\<gtr\> Plugins -\<gtr\> Python
+    </output>
+
+    <\input>
+      \<gtr\>\<gtr\>\<gtr\>\ 
+    <|input>
+      \;
+    </input>
+  </session>
+
+  <section*|安全>
+
+  考虑到调用外部命令存在的安全隐患，也可以完全禁用二进制插件：
+
+  <\session|scheme|default>
+    <\unfolded-io|Scheme] >
+      (get-preference "plugin:binary")
+    <|unfolded-io>
+      default
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (find-binary-python3)
+    <|unfolded-io>
+      \<less\>url /usr/bin/python3.11\<gtr\>
+    </unfolded-io>
+
+    <\input|Scheme] >
+      (set-preference "plugin:binary" "off")
+    </input>
+
+    <\unfolded-io|Scheme] >
+      (find-binary-python3)
+    <|unfolded-io>
+      \<less\>url {}\<gtr\>
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (has-binary-python3?)
+    <|unfolded-io>
+      #f
+    </unfolded-io>
+
+    <\input|Scheme] >
+      (reset-preference "plugin:binary")
+    </input>
+
+    <\unfolded-io|Scheme] >
+      (get-preference "plugin:binary")
+    <|unfolded-io>
+      default
+    </unfolded-io>
+
+    <\unfolded-io|Scheme] >
+      (has-binary-python3?)
+    <|unfolded-io>
+      #t
+    </unfolded-io>
+
+    <\input|Scheme] >
+      \;
+    </input>
+  </session>
+</body>
+
+<\initial>
+  <\collection>
+    <associate|page-medium|papyrus>
+    <associate|page-screen-margin|true>
+  </collection>
+</initial>

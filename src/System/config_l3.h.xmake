@@ -1,0 +1,18 @@
+#define KERNEL_L3
+
+/* L1 Kernel */
+${define HAVE_INTPTR_T}
+${define HAVE_STDINT_H}
+${define QTTEXMACS}
+${define SANITY_CHECKS}
+${define OS_MINGW}
+${define OS_MACOS}
+${define OS_WIN}
+${define OS_WASM}
+
+/* Use freetype library */
+${define USE_FREETYPE}
+${define USE_FONTCONFIG}
+
+/* Link freetype library with TeXmacs */
+#define LINKED_FREETYPE 1

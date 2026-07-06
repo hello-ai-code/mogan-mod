@@ -1,0 +1,136 @@
+<TMU|<tuple|1.1.0|2025.2.2>>
+
+<style|<tuple|tmudoc|chinese|number-europe>>
+
+<\body>
+  <tmdoc-title|撰写简单的文档><label|sec-man-text>
+
+  <section*|0. \ 本文中的符号约定>
+
+  <\itemize>
+    <item><key|I>表示大写 I，<key|i>表示小写 i 。不同的键盘按键之间若没有加号，表示需要按顺序按下。反之，若有加号，则表示需要同时按下。
+
+    <item><key|Tab>表示的是 Tab循环中的变体，比如<math|\<nabla\>>的输入方法为<key|V>再按两次<key|Tab>，<math|\<Phi\>>的输入方法是<key|V>再按一下<key|Tab>，然而在文中我们将不区分<key|Tab>的输入次数，统一的将<math|\<nabla\>>和<math|\<Phi\>>的快捷键表述为<key|V Tab> 。
+  </itemize>
+
+  \;
+
+  <section|概况><label|sec-man-generalities>
+
+  一般的字符和标点符号直接键盘输入即可。大多数现代系统也会为重音字符和其他特殊符号提供快捷键。在Mogan/Liii STEM中，<key|Tab>键后缀可用于输入重音字符，即通过Tab循环输入重音字符。比如，「é」的输入方法是<key|e><key|->再按两次<key|Tab>，「à」的输入方法则是<key|a><key|->再按四次<key|Tab>。
+
+  较长的单词在行边界处会自动使用连字符连接。对于中文，您需要在菜单<menu|Document|Language>中指定语言，以正确换行。
+
+  在底部状态栏的左边，您可看到文档的样式、当前光标处的文本属性。比如，底部状态栏显示「<with|language|english|<with|font|roman|text roman 10><with|font|cyrillic|>>」意味着您是在文本模式工作，所用的<with|font|roman|roman>字体大小为<with|font|roman|10>。您可在<menu|Format>菜单中改变当前光标处的文本属性(字体、字体大小、颜色、语言)。也可以选中一块文本后再对该文本操作。默认的全局文本属性在<menu|Document>菜单中更改。
+
+  底部状态栏的右边显示的是光标左侧的字符或者对象的属性。我们会显示当前光标所在位置的环境。所有这些信息都有助于您明确文档中光标的位置。
+
+  <section|输入结构化文本><label|sec-man-structure>
+
+  长文档往往具有良好的结构：即章、节和子节。其中包含不同类型的文本，比如纯文本，引用，脚注，定理等。选择好<menu|Document|Style>后，Mogan/Liii STEM会依照样式为文本排版，比如节、页、定理的编号，又如引用和脚注的排版等等。
+
+  目前可用的标准文档样式有：<tmstyle|generic>， <tmstyle|article>， <tmstyle|book>， <tmstyle|letter>， <tmstyle|exam>， <tmstyle|beamer>， <tmstyle|seminar>， <tmstyle|source>。比如，article样式可用于写文章。另外的样式可用于期刊论文或其它特殊用途，比如Mogan/Liii STEM官方文档。
+
+  选择好文档的样式后，您可以用节来组织文本，还可以使用特定的环境。环境的例子有定理，命题，引理等(见<menu|Insert|Enunciation>)。有序列表和无序列表也可用来组织文本。常用的属性标记有<markup|strong>，<markup|name>等等，可用于改变特定文本的属性。
+
+  熟练掌握Mogan/Liii STEM后，您可在自己的样式文件中添加环境。假设您经常做引用，且您希望引用文本是斜体的，且左右边距皆为1cm。最好的方法是制作一个引用环境，而不是一次次手动的改变文本和段落的属性。这不仅仅能够加快引用的输入，还可以直接改变引用环境的定义，同步改变文档中所出现的所有引用环境。比如您需要把引用的字体全部改小，此时，直接更改引用环境定义明显比一次次手动修改更方便。
+
+  了解一些通用的编辑规则可以极大的方便编辑Mogan/Liii STEM的结构化文本。一个重要的概念是焦点，请看下面这个例子。假设我们正在输入如下经典定理：
+
+  <\quote-env>
+    <\big-envbox>
+      <\theorem>
+        <small-focus|<math|\<mathe\><rsup|\<mathpi\>*\<mathi\>>=\<um\>1<math-cursor>>>。
+      </theorem>
+    </big-envbox>
+  </quote-env>
+
+  在本例中，最内部被青色框包围的标记称为当前焦点。
+
+  <menu|Focus>菜单和焦点工具栏（最后一行工具栏）是高度上下文相关的，它们都依赖于当前焦点。在本例中，焦点工具栏中有一个弹出菜单公式，当您选择<menu|Equation>后，文本会变为：
+
+  <\quote-env>
+    <\big-envbox>
+      <\theorem>
+        \;
+
+        <\big-focus>
+          <\equation*>
+            \<mathe\><rsup|\<mathpi\>*\<mathi\>>=\<um\>1<math-cursor>.
+          </equation*>
+        </big-focus>
+      </theorem>
+    </big-envbox>
+  </quote-env>
+
+  类似地，焦点工具栏左部的箭头按钮可允许您跳转到相似标记。在本例中，它们会让你迅速在文档中所有的公式或者方程间浏览。关于<hlink||manu.editing.zh.tmu#sec-man-structured-editing>和结构化编辑工具中的<hlink|结构化编辑|manu.editing.zh.tmu#sec-man-structured-editing>，还请移步细看。
+
+  第二个重要的概念是编辑模式。有三种模式：文本模式，数学模式，命令模式。模式切换比焦点的切换要少得多，其工具栏就在焦点工具栏的上方。<menu|Insert>和<menu|Format>菜单都是与模式相关的。
+
+  <section|属性标记><label|sec-man-content-tags>
+
+  属性标记是文本中最简单的结构之一。<menu|Insert|Content tag>下拉菜单列出了所有的属性标记。属性标记表明一段文字具有特殊性质或者为特殊目的服务。比如，重要的文本应当用<markup|strong>来标记。该标记默认将字体渲染成<strong|粗体>。需要注意的是，文档样式不同，加强文本后渲染效果也会有所不同。比如在幻灯片中，加强文本的渲染效果可能是带点透明效果的不同的颜色。下面是最常用的一些属性标记及其目的：
+
+  <big-table|<descriptive-table|<tformat|<table|<row|<cell|标记>|<cell|例子>|<cell|目的>>|<row|<cell|<markup|strong>>|<cell|<with|font|roman|this is <strong|important>>>|<cell|加粗文本以显示其重要性>>|<row|<cell|<markup|em>>|<cell|<with|font|roman|the <em|real> thing>>|<cell|强调一段文本>>|<row|<cell|<markup|dfn>>|<cell|<with|font|roman|A <dfn|gnu> is a horny beast>>|<cell|一些概念的定义>>|<row|<cell|<markup|samp>>|<cell|<with|font|roman|the <samp|ae> ligature æ>>|<cell|字母序列>>|<row|<cell|<markup|name>>|<cell|<with|font|roman|the <name|Linux> system>>|<cell|某物的名称>>|<row|<cell|<markup|person>>|<cell|<with|font|roman|I am <name|Joris>>>|<cell|某人的名字>>|<row|<cell|<markup|cite*>>|<cell|<with|font|roman|Melville's <cite*|Moby Dick>>>|<cell|参考书目>>|<row|<cell|<markup|abbr>>|<cell|<with|font|roman|I work at the <abbr|C.N.R.S.>>>|<cell|缩写>>|<row|<cell|<markup|acronym>>|<cell|<with|font|roman|the <acronym|HTML> format>>|<cell|首字母缩写>>|<row|<cell|<markup|verbatim>>|<cell|<with|font|roman|the program said <verbatim|hello>>>|<cell|纯文本，比如计算机程序的输出>>|<row|<cell|<markup|kbd>>|<cell|<with|font|roman|Please type <kbd|return>>>|<cell|应当用键盘输入的文本>>|<row|<cell|<markup|code*>>|<cell|<with|font|concrete|<code*|cout \<less\>\<less\> 1+1;> yields <verbatim|2>>>|<cell|代码>>|<row|<cell|<markup|var>>|<cell|<with|font|roman|<verbatim|cp <var|src-file> <var|dest-file>>>>|<cell|程序中的变量>>>>>|常用属性标记一览。>
+
+  <section|环境><label|sec-man-environments>
+
+  与属性标记类似，环境的作用是赋予一段文字以特殊含义。属性标记通常作用于一小段文字，而环境的作用范围往往横跨多行。数学中常用的环境是<markup|定理>和<markup|证明>，如下所示:
+
+  <\theorem>
+    不存在这样的正整数<math|a,b,c>和<math|n<around*|(|n\<geqslant\>3|)>>使得<math|a<rsup|n>+b<rsup|n>=c<rsup|n>>。
+  </theorem>
+
+  <\proof>
+    空白太小，容不下我的证明。
+  </proof>
+
+  通过菜单项<menu|Insert>插入环境。与定理类似的环境有<markup|命题>，<compound|markup|引理>，<markup|推论>，<markup|公理>，<markup|定义>。其它常用的环境还有<markup|注意>，<markup|注记>，<markup|例>，<markup|警告>，<markup|练习>和<markup|题目>，其渲染效果与定理类似。
+
+  <section|列表><label|sec-man-lists>
+
+  通过菜单项<menu|Insert|Itemize>插入无序列表。可选择 <math|\<bullet\>> (圆点)， <math|<op|->> (短线) 或者 <math|<op|\<rightarrow\>>> (箭头) 之一作为条目的标记。如下所示，列表中还可嵌入子列表：
+
+  <\itemize>
+    <item>第一项。
+
+    <item>下面是子列表：
+
+    <\itemize>
+      <item>一个子项。
+
+      <item>另一个子项。
+    </itemize>
+
+    <item>最后一项。
+  </itemize>
+
+  默认的标记根据其层次自动以不同样式显示。在最外面一层，我们使用<math|\<bullet\>>，第二层则用<math|<op|\<circ\>>>。光标在列表中时，按下<key|Enter>键将自动新建一个新项目。如果您的项目内容由多个段落构成，则可以用<key|shift+Enter>新起一段。
+
+  通过菜单项<menu|Insert|Enumerate>插入有序列表，与无序列表类似，只是各个项目是顺序显示的。下面是一个按罗马数字顺序显示的例子：
+
+  <\enumerate-Roman>
+    <item>第一项
+
+    <item>第二项
+
+    <item>最后一项
+  </enumerate-Roman>
+
+  最后一种列表是描述列表。通过菜单项 <menu|Insert|Description>插入，功能是演示一串概念：
+
+  <\description>
+    <\with|font|roman>
+      <item*|Gnu>一个多毛但温柔的野兽。
+
+      <item*|Gnat>只生活在动物园里.
+    </with>
+  </description>
+</body>
+
+<\initial>
+  <\collection>
+    <associate|page-medium|paper>
+    <associate|page-screen-margin|false>
+  </collection>
+</initial>

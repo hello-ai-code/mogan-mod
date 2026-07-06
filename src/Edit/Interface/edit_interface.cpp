@@ -1,0 +1,1399 @@
+
+/******************************************************************************
+ * MODULE     : edit_interface.cpp
+ * DESCRIPTION: interface between the editor and the window manager
+ * COPYRIGHT  : (C) 1999  Joris van der Hoeven
+ *******************************************************************************
+ * This software falls under the GNU general public license version 3 or later.
+ * It comes WITHOUT ANY WARRANTY WHATSOEVER. For details, see the file LICENSE
+ * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
+ ******************************************************************************/
+
+#include "Interface/edit_interface.hpp"
+#include "Metafont/tex_files.hpp"
+#include "convert.hpp"
+#include "data_cache.hpp"
+#include "file.hpp"
+#include "gui.hpp" // for gui_interrupted
+#include "message.hpp"
+#include "new_view.hpp"
+#include "observers.hpp"
+#include "preferences.hpp"
+#include "server.hpp"
+#include "tm_window.hpp"
+#include "tree_traverse.hpp"
+
+#include <moebius/drd/drd_mode.hpp>
+#include <moebius/drd/drd_std.hpp>
+#include <moebius/tree_label.hpp>
+
+using moebius::drd::set_access_mode;
+using moebius::drd::the_drd;
+using namespace moebius;
+
+extern void (*env_next_prog) (void);
+extern void set_snap_mode (tree t);
+extern void set_snap_distance (SI d);
+
+/*static*/ string
+MODE_LANGUAGE (string mode) {
+  if (mode == "text") return LANGUAGE;
+  else if (mode == "math") return MATH_LANGUAGE;
+  else if (mode == "prog") return PROG_LANGUAGE;
+  else if (mode == "src") return LANGUAGE;
+  std_error << "Invalid mode " << mode << ", assuming text mode instead\n";
+  return LANGUAGE;
+}
+
+/******************************************************************************
+ * Main edit_interface routines
+ ******************************************************************************/
+
+static double
+get_zoom (editor_rep* ed, tm_buffer buf) {
+  if (!is_nil (buf) && buf->data->init->contains ("no-zoom"))
+    return as_double (buf->data->init[ZOOM_FACTOR]);
+  else return retina_zoom * ed->sv->get_default_zoom_factor ();
+}
+
+edit_interface_rep::edit_interface_rep ()
+    : editor_rep (), // NOTE: ignored by the compiler, but suppresses warning
+      env_change (0), last_change (texmacs_time ()),
+      last_update (last_change - 1), last_event (texmacs_time ()),
+      anim_next (1.0e12), full_screen (false), got_focus (false), sh_s (""),
+      sh_mark (0), pre_edit_skip (false), pre_edit_s (""), pre_edit_mark (0),
+      popup_win (), message_l (""), message_r (""), last_l (""), last_r (""),
+      zoomf (get_zoom (this, buf)), magf (zoomf / std_shrinkf),
+      pixel ((SI) tm_round ((std_shrinkf * PIXEL) / zoomf)),
+      zpixel (max ((SI) tm_round (std_shrinkf * PIXEL), pixel)), copy_always (),
+      last_x (0), last_y (0), last_t (0), tremble_count (0),
+      tremble_right (false), cursor_blink_visible (true),
+      cursor_blink_active (false), cursor_blink_next (0),
+      cursor_blink_period (500), table_selection (false),
+      mouse_adjusting (false), oc (0, 0), temp_invalid_cursor (false),
+      hover_image_rect (0, 0, 0, 0), hover_image_path (),
+      table_env_cache (rectangles ()), shadow (NULL), stored (NULL), cur_sb (2),
+      cur_wb (2) {
+  user_active= false;
+  input_mode = INPUT_NORMAL;
+  gui_root_extents (cur_wx, cur_wy);
+}
+
+edit_interface_rep::~edit_interface_rep () {
+  if (shadow != NULL) tm_delete (shadow);
+  if (stored != NULL) tm_delete (stored);
+  shadow= NULL;
+  stored= NULL;
+}
+
+edit_interface_rep::operator tree () {
+  return tuple ("editor", as_string (get_name ()));
+}
+
+void
+edit_interface_rep::suspend () {
+  // cout << "Suspend " << buf->buf->name << LF;
+  if (got_focus) {
+    interrupt_shortcut ();
+    set_message ("", "", false);
+  }
+  got_focus           = false;
+  cursor_blink_active = false;
+  cursor_blink_visible= false;
+  cursor_blink_next   = 0;
+  env_change          = env_change & (~THE_FREEZE);
+  notify_change (THE_FOCUS);
+  if (shadow != NULL) tm_delete (shadow);
+  if (stored != NULL) tm_delete (stored);
+  shadow= NULL;
+  stored= NULL;
+}
+
+void
+edit_interface_rep::resume () {
+  // cout << "Resume " << buf->buf->name << LF;
+  bench_start ("resume");
+  got_focus= true;
+  SERVER (menu_main ("(horizontal (link texmacs-menu))"));
+  SERVER (menu_icons (0, "(horizontal (link texmacs-main-icons))"));
+  SERVER (menu_icons (1, "(horizontal (link texmacs-mode-icons))"));
+  SERVER (menu_icons (2, "(horizontal (link texmacs-focus-icons))"));
+  SERVER (menu_icons (3, "(horizontal (link texmacs-extra-icons))"));
+  SERVER (menu_icons (4, "(horizontal (link texmacs-tab-pages))"));
+  SERVER (notification_bar ("(horizontal (link texmacs-notification-bar))"));
+  array<url> a= buffer_to_windows (buf->buf->name);
+  if (N (a) > 0) {
+    string win = "(string->url \"" * as_string (a[0]) * "\")";
+    string ldyn= "(dynamic (texmacs-left-tools " * win * "))";
+    string rdyn= "(dynamic (texmacs-side-tools " * win * "))";
+    string bdyn= "(dynamic (texmacs-bottom-tools " * win * "))";
+    SERVER (side_tools (1, "(vertical " * ldyn * ")"));
+    SERVER (side_tools (0, "(vertical " * rdyn * ")"));
+    SERVER (bottom_tools (0, "(vertical " * bdyn * ")"));
+  }
+  cur_sb    = 2;
+  env_change= env_change & (~THE_FREEZE);
+  notify_change (THE_FOCUS + THE_EXTENTS);
+  drd_info old_drd= the_drd;
+  the_drd         = drd;
+  path new_tp     = make_cursor_accessible (tp, true);
+  if (new_tp != tp) {
+    notify_change (THE_CURSOR);
+    tp= new_tp;
+  }
+  the_drd= old_drd;
+#ifdef QTTEXMACS
+  // FIXME: dirty hack in order to correct a bug introduced
+  // after a bugfix by Massimiliano during summer 2016
+  eval ("(delayed (:idle 1) (refresh-window))");
+#endif
+  bench_end ("resume");
+}
+
+void
+edit_interface_rep::keyboard_focus_on (string field) {
+  array<url> a= buffer_to_windows (buf->buf->name);
+  if (N (a) >= 1) {
+    tm_window win= concrete_window (a[0]);
+    send_keyboard_focus_on (win->wid, field);
+  }
+}
+
+/******************************************************************************
+ * Routines for dealing with shrinked coordinates
+ ******************************************************************************/
+
+int
+edit_interface_rep::get_pixel_size () {
+  return pixel;
+}
+
+void
+compute_zoom_scroll (SI cursor_x, SI cursor_y, SI old_sx, SI old_sy,
+                     double old_magf, double new_magf, SI& new_sx, SI& new_sy) {
+  new_sx= cursor_x - (SI) tm_round ((cursor_x - old_sx) * old_magf / new_magf);
+  new_sy= cursor_y - (SI) tm_round ((cursor_y - old_sy) * old_magf / new_magf);
+}
+
+void
+edit_interface_rep::set_zoom_factor (double zoom) {
+  double old_magf= magf;
+
+  // 获取旧视口中央（在更新 magf 之前，确保逻辑坐标一致）
+  SI old_cx= 0, old_cy= 0;
+  if (is_attached (this) && old_magf > 0.0) {
+    update_visible ();
+    old_cx= (vx1 + vx2) / 2;
+    old_cy= (vy1 + vy2) / 2;
+  }
+
+  zoomf = zoom;
+  magf  = zoomf / std_shrinkf;
+  pixel = (SI) tm_round ((std_shrinkf * PIXEL) / zoomf);
+  zpixel= max ((SI) tm_round (std_shrinkf * PIXEL), pixel);
+
+  if (is_attached (this) && old_magf > 0.0 && magf > 0.0) {
+    cursor cu= get_cursor ();
+    if (cu->valid) {
+      SI new_cx, new_cy;
+      compute_zoom_scroll (cu->ox, cu->oy, old_cx, old_cy, old_magf, magf,
+                           new_cx, new_cy);
+      scroll_to (new_cx, new_cy);
+    }
+  }
+}
+
+void
+edit_interface_rep::invalidate (SI x1, SI y1, SI x2, SI y2) {
+  send_invalidate (this, (SI) floor (x1 * magf), (SI) floor (y1 * magf),
+                   (SI) ceil (x2 * magf), (SI) ceil (y2 * magf));
+}
+
+void
+edit_interface_rep::invalidate (rectangles rs) {
+  if (!is_nil (rs)) {
+    rectangle  first_rect= rs->item;
+    SI         min_x1= first_rect->x1 - pixel, min_y1= first_rect->y1 - pixel;
+    SI         max_x2= first_rect->x2 + pixel, max_y2= first_rect->y2 + pixel;
+    rectangles current= rs->next;
+    while (!is_nil (current)) {
+      rectangle& r= current->item;
+      min_x1      = min (min_x1, r->x1 - pixel);
+      min_y1      = min (min_y1, r->y1 - pixel);
+      max_x2      = max (max_x2, r->x2 + pixel);
+      max_y2      = max (max_y2, r->y2 + pixel);
+      current     = current->next;
+    }
+    invalidate (min_x1, min_y1, max_x2, max_y2);
+  }
+}
+
+void
+edit_interface_rep::invalidate_all () {
+  send_invalidate_all (this);
+}
+
+void
+edit_interface_rep::update_visible () {
+  SERVER (get_visible (vx1, vy1, vx2, vy2));
+  vx1= (SI) (vx1 / magf);
+  vy1= (SI) (vy1 / magf);
+  vx2= (SI) (vx2 / magf);
+  vy2= (SI) (vy2 / magf);
+}
+
+SI
+edit_interface_rep::get_visible_width () {
+  update_visible ();
+  return vx2 - vx1;
+}
+
+SI
+edit_interface_rep::get_visible_height () {
+  update_visible ();
+  return vy2 - vy1;
+}
+
+#ifdef QTTEXMACS
+#include <QApplication>
+#include <QStyle>
+static SI
+scrollbar_width () {
+  return (qApp->style ()->pixelMetric (QStyle::PM_ScrollBarExtent) + 2) * PIXEL;
+}
+#else
+static SI
+scrollbar_width () {
+  return 20 * PIXEL;
+}
+#endif
+
+SI
+edit_interface_rep::get_window_width () {
+  SI     w, h;
+  widget me= ::get_canvas (widget (cvw));
+  ::get_size (me, w, h);
+  bool sb= (get_init_string (SCROLL_BARS) != "false");
+  if (full_screen) {
+    string medium= get_init_string (PAGE_MEDIUM);
+    if (medium == "automatic" || medium == "beamer") sb= false;
+  }
+  if (sb) w-= scrollbar_width ();
+#if defined(QTTEXMACS) && !defined(Q_OS_MAC) && (QT_VERSION < 0x050000)
+  w= (SI) (w / retina_zoom);
+#endif
+  return w;
+}
+
+SI
+edit_interface_rep::get_window_height () {
+  SI     w, h;
+  widget me= ::get_canvas (widget (cvw));
+  ::get_size (me, w, h);
+#if defined(QTTEXMACS) && !defined(Q_OS_MAC) && (QT_VERSION < 0x050000)
+  h= (SI) (h / retina_zoom);
+#endif
+  return h;
+}
+
+SI
+edit_interface_rep::get_window_x () {
+  SI wx, wy;
+  ::get_position (get_window (this), wx, wy);
+  return wx;
+}
+
+SI
+edit_interface_rep::get_window_y () {
+  SI wx, wy;
+  ::get_position (get_window (this), wx, wy);
+  return wy;
+}
+
+SI
+edit_interface_rep::get_canvas_x () {
+  SI     ox, oy;
+  widget me= ::get_canvas (widget (cvw));
+  ::get_position (me, ox, oy);
+  return ox;
+}
+
+SI
+edit_interface_rep::get_canvas_y () {
+  SI     ox, oy;
+  widget me= ::get_canvas (widget (cvw));
+  ::get_position (me, ox, oy);
+
+  return oy;
+}
+
+SI
+edit_interface_rep::get_scroll_x () {
+  SI scx, scy;
+  SERVER (scroll_where (scx, scy));
+  scx= (SI) (scx / magf);
+  scy= (SI) (scy / magf);
+  return scx;
+}
+
+SI
+edit_interface_rep::get_scroll_y () {
+  SI scx, scy;
+  SERVER (scroll_where (scx, scy));
+  scx= (SI) (scx / magf);
+  scy= (SI) (scy / magf);
+  return scy;
+}
+
+void
+edit_interface_rep::scroll_to (SI x, SI y) {
+  stored_rects= rectangles ();
+  copy_always = rectangles ();
+  SERVER (scroll_to ((SI) (x * magf), ((SI) (y * magf))));
+}
+
+void
+edit_interface_rep::set_extents (SI x1, SI y1, SI x2, SI y2) {
+  stored_rects= rectangles ();
+  copy_always = rectangles ();
+  SERVER (set_extents ((SI) floor (x1 * magf), (SI) floor (y1 * magf),
+                       (SI) ceil (x2 * magf), (SI) ceil (y2 * magf)));
+}
+
+/******************************************************************************
+ * Scroll so as to make the cursor and the selection visible
+ ******************************************************************************/
+
+static SI
+absval (SI x) {
+  return max (x, -x);
+}
+
+void
+edit_interface_rep::make_cursor_visible () {
+  cursor cu           = get_cursor ();
+  cursor_blink_visible= true;
+  if (cursor_blink_active && cursor_blink_period > 0)
+    cursor_blink_next= texmacs_time () + cursor_blink_period;
+  update_visible ();
+  bool must_update=
+      (cu->ox < vx1) || (cu->ox >= vx2) || (cu->oy < vy1) || (cu->oy >= vy2);
+
+  if (must_update) {
+    scroll_to (cu->ox, cu->oy);
+  }
+}
+
+void
+edit_interface_rep::cursor_visible () {
+  path   sp           = find_innermost_scroll (eb, tp);
+  cursor cu           = get_cursor ();
+  cursor_blink_visible= true;
+  if (cursor_blink_active && cursor_blink_period > 0)
+    cursor_blink_next= texmacs_time () + cursor_blink_period;
+  if (is_nil (sp)) {
+    update_visible ();
+    cu->y1-= 2 * pixel;
+    cu->y2+= 2 * pixel;
+    bool must_update= (cu->ox + ((SI) (cu->y1 * cu->slope)) < vx1) ||
+                      (cu->ox + ((SI) (cu->y2 * cu->slope)) >= vx2) ||
+                      (cu->oy + cu->y1 < vy1) || (cu->oy + cu->y2 >= vy2);
+
+    if (get_user_preference ("snap to pages", "off") == "on") {
+      box pages= eb[0];
+      if (N (pages) > 1) {
+        SI vw= vx2 - vx1, vh= vy2 - vy1;
+        for (int i= 0; i < N (pages); i++) {
+          SI scx, scy;
+          SERVER (scroll_where (scx, scy));
+          scx  = (SI) (scx / magf);
+          scy  = (SI) (scy / magf);
+          SI x1= eb->sy (0) + pages->sx1 (i);
+          SI x2= eb->sy (0) + pages->sx2 (i);
+          SI y1= eb->sy (0) + pages->sy1 (i);
+          SI y2= eb->sy (0) + pages->sy2 (i);
+          SI pw= x2 - x1, ph= y2 - y1;
+          if (cu->ox >= x1 && x2 > cu->ox && cu->oy >= y1 && y2 > cu->oy &&
+              5 * vw > 3 * pw && 5 * vh > 3 * ph) {
+            if (!must_update) {
+              SI d= 5 * pixel;
+              if (pw >= vw) {
+                if (vx1 > x1 + d && absval (x2 - vx2) > d) must_update= true;
+                if (x2 > vx2 + d && absval (x1 - vx1) > d) must_update= true;
+              }
+              else if (vx1 > x1 + d || x2 > vx2 + d) must_update= true;
+              if (ph >= vh) {
+                if (vy1 > y1 + d && absval (y2 - vy2) > d) must_update= true;
+                if (y2 > vy2 + d && absval (y1 - vy1) > d) must_update= true;
+              }
+              else if (vy1 > y1 + d || y2 > vy2 + d) must_update= true;
+            }
+            if (must_update) {
+              // cout << "Cursor on page " << i << LF;
+              // cout << "Visual " << vx1/PIXEL << ", " << vy1/PIXEL
+              //      << "; " << vx2/PIXEL << ", " << vy2/PIXEL << LF;
+              // cout << "Page " << x1/PIXEL << ", " << y1/PIXEL
+              //      << "; " << x2/PIXEL << ", " << y2/PIXEL << LF;
+              SI mx= (x1 + x2) >> 1, my= (y1 + y2) >> 1;
+              if (pw >= vw) {
+                if (cu->ox > mx) mx= x2 - ((vx2 - vx1) >> 1);
+                else mx= x1 + ((vx2 - vx1) >> 1);
+              }
+              if (ph >= vh) {
+                if (cu->oy > my) my= y2 - ((vy2 - vy1) >> 1);
+                else my= y1 + ((vy2 - vy1) >> 1);
+              }
+              scroll_to (mx, my);
+              send_invalidate_all (this);
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    if (must_update) {
+      scroll_to (cu->ox, cu->oy);
+      send_invalidate_all (this);
+    }
+  }
+  else {
+    SI        x, y, sx, sy;
+    rectangle outer, inner;
+    find_canvas_info (eb, sp, x, y, sx, sy, outer, inner);
+    if ((cu->ox + ((SI) (cu->y1 * cu->slope)) < x + outer->x1) ||
+        (cu->ox + ((SI) (cu->y2 * cu->slope)) > x + outer->x2)) {
+      SI tx= inner->x2 - inner->x1;
+      SI cx= outer->x2 - outer->x1;
+      if (tx > cx) {
+        SI     outer_cx= cu->ox - x;
+        SI     inner_cx= outer_cx - sx;
+        SI     dx      = inner_cx - inner->x1;
+        double p   = 100.0 * ((double) (dx - (cx >> 1))) / ((double) (tx - cx));
+        p          = max (min (p, 100.0), 0.0);
+        tree old_xt= eb[path_up (sp)]->get_info ("scroll-x");
+        tree new_xt= as_string (p) * "%";
+        if (new_xt != old_xt && is_accessible (obtain_ip (old_xt))) {
+          object fun= symbol_object ("tree-set");
+          object cmd= list_object (fun, old_xt, new_xt);
+          exec_delayed (scheme_cmd (cmd));
+          temp_invalid_cursor= true;
+        }
+      }
+    }
+    if ((cu->oy + cu->y1 < y + outer->y1) ||
+        (cu->oy + cu->y2 > y + outer->y2)) {
+      SI ty= inner->y2 - inner->y1;
+      SI cy= outer->y2 - outer->y1;
+      if (ty > cy) {
+        SI     outer_cy= cu->oy + ((cu->y1 + cu->y2) >> 1) - y;
+        SI     inner_cy= outer_cy - sy;
+        SI     dy      = inner_cy - inner->y1;
+        double p   = 100.0 * ((double) (dy - (cy >> 1))) / ((double) (ty - cy));
+        p          = max (min (p, 100.0), 0.0);
+        tree old_yt= eb[path_up (sp)]->get_info ("scroll-y");
+        tree new_yt= as_string (p) * "%";
+        if (new_yt != old_yt && is_accessible (obtain_ip (old_yt))) {
+          object fun= symbol_object ("tree-set");
+          object cmd= list_object (fun, old_yt, new_yt);
+          exec_delayed (scheme_cmd (cmd));
+          temp_invalid_cursor= true;
+        }
+      }
+    }
+  }
+}
+
+void
+edit_interface_rep::selection_visible () {
+  update_visible ();
+  if ((vx2 - vx1 <= 80 * pixel) || (vy2 - vy1 <= 80 * pixel)) return;
+
+  SI extra= (cur_sb == 1 ? 20 * pixel : 0);
+  /*
+  bool scroll_x= (end_x < vx1 + extra) || (end_x >= vx2 - extra);
+  bool scroll_y= (end_y < vy1 + extra) || (end_y >= vy2 - extra);
+  if (scroll_x || scroll_y) {
+    SI new_x = (scroll_x)? end_x : (vx1+vx2)/2;
+    SI new_y = (scroll_y)? end_y : (vy1+vy2)/2;
+  */
+  // trying a "proportional" scroll
+  SI mx= max (-end_x + vx1 + extra, max (end_x - vx2 + extra, 0));
+  SI my= max (-end_y + vy1 + extra, max (end_y - vy2 + extra, 0));
+
+  if ((mx > 0) || (my > 0)) {
+    SI vxc= (vx1 + vx2) / 2, dx= end_x - vxc;
+    SI vyc= (vy1 + vy2) / 2, dy= end_y - vyc;
+    SI new_x= vxc + ((extra) ? (mx * dx) / extra : dx);
+    SI new_y= vyc + ((extra) ? (my * dy) / extra : dy);
+    // end change
+    scroll_to (new_x, new_y);
+    send_invalidate_all (this);
+    SI old_vx1= vx1, old_vy1= vy1;
+    update_visible ();
+    end_x+= vx1 - old_vx1;
+    end_y+= vy1 - old_vy1;
+  }
+}
+
+/******************************************************************************
+ * Computation of environment rectangles
+ ******************************************************************************/
+
+static bool
+is_graphical (tree t) {
+  return is_func (t, POINT) || is_func (t, LINE) || is_func (t, CLINE) ||
+         is_func (t, ARC) || is_func (t, CARC) || is_func (t, ELLIPSE) ||
+         is_func (t, SPLINE) || is_func (t, CSPLINE) || is_func (t, BEZIER) ||
+         is_func (t, CBEZIER) || is_func (t, SMOOTH) || is_func (t, CSMOOTH) ||
+         is_func (t, PENSCRIPT) || is_func (t, CALLIGRAPHY);
+}
+
+static selection
+find_adjacent_selection (array<array<selection>> cell_cache, int i, int j,
+                         SI x1, SI x2, bool look_down) {
+  int di= look_down ? 1 : -1;
+  int ii= i + di;
+  while (ii >= 0 && ii < N (cell_cache)) {
+    if (j < N (cell_cache[ii]) && cell_cache[ii][j]->valid)
+      return cell_cache[ii][j];
+    for (int jj= 0; jj < N (cell_cache[ii]); jj++) {
+      selection bis= cell_cache[ii][jj];
+      if (!bis->valid || is_nil (bis->rs) || N (bis->rs) == 0) continue;
+      rectangle r= bis->rs->item;
+      if (r->x2 > x1 && r->x1 < x2) return bis;
+    }
+    ii+= di;
+  }
+  return selection ();
+}
+
+static void
+correct_adjacent (rectangles& rs1, rectangles& rs2) {
+  if (N (rs1) != 1 || N (rs2) != 1) return;
+  SI bot1= rs1->item->y1;
+  SI top2= rs2->item->y2;
+  if (rs1->item->y1 <= rs2->item->y1) {
+    // cout << "Discard " << rs1->item->y1 << ", " << rs2->item->y1 << "\n";
+    return;
+  }
+  if (rs1->item->y2 <= rs2->item->y2) {
+    // cout << "Discard " << rs1->item->y2 << ", " << rs2->item->y2 << "\n";
+    return;
+  }
+  SI mid       = (bot1 + top2) >> 1;
+  rs1->item->y1= mid;
+  rs2->item->y2= mid;
+}
+
+static void
+correct_adjacent_horizontal (rectangles& rs1, rectangles& rs2) {
+  if (N (rs1) != 1 || N (rs2) != 1) return;
+  SI right1= rs1->item->x2;
+  SI left2 = rs2->item->x1;
+  if (rs1->item->x2 >= rs2->item->x2) {
+    return;
+  }
+  if (rs1->item->x1 >= rs2->item->x1) {
+    return;
+  }
+  SI mid       = (right1 + left2) >> 1;
+  rs1->item->x2= mid;
+  rs2->item->x1= mid;
+}
+
+void
+edit_interface_rep::compute_env_rects (path p, rectangles& rs, bool recurse) {
+  if (p == rp) return;
+  if (is_nil (p)) return;
+  tree pt= subtree (et, path_up (p));
+  tree st= subtree (et, p);
+  if ((is_func (st, TABLE) || is_func (st, SUBTABLE)) && recurse &&
+      get_preference ("show table cells") == "on") {
+    if (table_env_cache->contains (st)) {
+      rs << table_env_cache[st];
+      return;
+    }
+
+    bool is_subtable_inner= false;
+    if (is_func (st, TABLE)) {
+      tree ppt= subtree (et, path_up (path_up (p)));
+      if (is_func (ppt, SUBTABLE)) is_subtable_inner= true;
+    }
+
+    rectangles rl;
+
+    int table_rows= N (st);
+
+    array<int> row_sizes;
+    for (int i= 0; i < table_rows; i++) {
+      if (is_func (st[i], ROW)) {
+        row_sizes << N (st[i]);
+      }
+      else {
+        row_sizes << 0;
+      }
+    }
+
+    array<array<selection>> cell_cache;
+    for (int i= 0; i < table_rows; i++) {
+      array<selection> row_cache;
+      if (is_func (st[i], ROW)) {
+        for (int j= 0; j < N (st[i]); j++) {
+          selection sel=
+              eb->find_check_selection (p * i * j * 0, p * i * j * 1);
+          row_cache << sel;
+        }
+      }
+      cell_cache << row_cache;
+    }
+
+    for (int i= 0; i < table_rows; i++) {
+      if (is_func (st[i], ROW)) {
+        for (int j= 0; j < N (st[i]); j++) {
+          selection sel= cell_cache[i][j];
+          if (!sel->valid || is_nil (sel->rs) || N (sel->rs) == 0) continue;
+          rectangles rsel= copy (thicken (sel->rs, 0, 2 * pixel));
+
+          if (i > 0 && j < row_sizes[i - 1] && N (cell_cache[i - 1]) > j) {
+            selection bis= cell_cache[i - 1][j];
+            if (!bis->valid || is_nil (bis->rs) || N (bis->rs) == 0) {
+              bis= find_adjacent_selection (cell_cache, i, j, sel->rs->item->x1,
+                                            sel->rs->item->x2, false);
+            }
+            if (bis->valid && !is_nil (bis->rs) && N (bis->rs) > 0) {
+              // Skip if cells are on different pages. Use un-thickened rects
+              // because thickening could mask the page gap.
+              if (!(bis->rs->item->y1 > sel->rs->item->y2)) {
+                rectangles rbis= copy (thicken (bis->rs, 0, 2 * pixel));
+                correct_adjacent (rbis, rsel);
+              }
+            }
+          }
+
+          if (i + 1 < table_rows && j < row_sizes[i + 1] &&
+              N (cell_cache[i + 1]) > j) {
+            selection bis= cell_cache[i + 1][j];
+            if (!bis->valid || is_nil (bis->rs) || N (bis->rs) == 0) {
+              bis= find_adjacent_selection (cell_cache, i, j, sel->rs->item->x1,
+                                            sel->rs->item->x2, true);
+            }
+            if (bis->valid && !is_nil (bis->rs) && N (bis->rs) > 0) {
+              if (!(sel->rs->item->y1 > bis->rs->item->y2)) {
+                rectangles rbis= copy (thicken (bis->rs, 0, 2 * pixel));
+                correct_adjacent (rsel, rbis);
+              }
+            }
+          }
+
+          if (j > 0) {
+            selection bis= cell_cache[i][j - 1];
+            if (bis->valid && !is_nil (bis->rs) && N (bis->rs) > 0) {
+              rectangles rbis= copy (thicken (bis->rs, 0, 2 * pixel));
+              correct_adjacent_horizontal (rbis, rsel);
+            }
+          }
+
+          if (j + 1 < N (cell_cache[i])) {
+            selection bis= cell_cache[i][j + 1];
+            if (bis->valid && !is_nil (bis->rs) && N (bis->rs) > 0) {
+              rectangles rbis= copy (thicken (bis->rs, 0, 2 * pixel));
+              correct_adjacent_horizontal (rsel, rbis);
+            }
+          }
+
+          rectangles selp= thicken (rsel, pixel / 2, pixel / 2);
+          rectangles selm= thicken (rsel, -pixel / 2, -pixel / 2);
+
+          if (is_subtable_inner) {
+            rectangles rdiff;
+            if (i > 0) {
+              rdiff << rectangles (rectangle (selp->item->x1, selm->item->y2,
+                                              selp->item->x2, selp->item->y2));
+            }
+            if (i + 1 < table_rows) {
+              rdiff << rectangles (rectangle (selp->item->x1, selp->item->y1,
+                                              selp->item->x2, selm->item->y1));
+            }
+            if (j > 0) {
+              rdiff << rectangles (rectangle (selp->item->x1, selm->item->y1,
+                                              selm->item->x1, selm->item->y2));
+            }
+            if (j + 1 < N (cell_cache[i])) {
+              rdiff << rectangles (rectangle (selm->item->x2, selm->item->y1,
+                                              selp->item->x2, selm->item->y2));
+            }
+            rl << simplify (::correct (rdiff));
+          }
+          else {
+            rl << simplify (::correct (selp - selm));
+          }
+        }
+      }
+    }
+    rs << simplify (rl);
+    table_env_cache (st)= simplify (rl);
+    if (recurse) compute_env_rects (path_up (p), rs, recurse);
+  }
+  else if (is_atomic (st) || drd->is_child_enforcing (st) ||
+           // is_document (st) || is_concat (st) ||
+           is_func (st, TABLE) || is_func (st, SUBTABLE) || is_func (st, ROW) ||
+           is_func (st, TFORMAT) || is_graphical (st) ||
+           (is_func (st, WITH) && is_graphical (st[N (st) - 1])) ||
+           (is_func (st, WITH) && is_graphical_text (st[N (st) - 1])) ||
+           (is_func (pt, GRAPHICS) &&
+            (is_compound (st, "anim-edit") || is_compound (st, "anim-static") ||
+             is_compound (st, "anim-dynamic"))) ||
+           is_compound (st, "shared", 3) ||
+           (is_compound (st, "math", 1) &&
+            is_compound (subtree (et, path_up (p)), "input")))
+    compute_env_rects (path_up (p), rs, recurse);
+  else {
+    int new_mode= DRD_ACCESS_NORMAL;
+    if (get_init_string (MODE) == "src") new_mode= DRD_ACCESS_SOURCE;
+    int  old_mode= set_access_mode (new_mode);
+    tree st      = subtree (et, p);
+    if (is_accessible_cursor (et, p * right_index (st)) || in_source ()) {
+      bool right;
+      path p1= p * 0, p2= p * 1, q1, q2;
+      if (is_script (subtree (et, p), right) || is_func (st, TEXT_AT) ||
+          is_func (st, MATH_AT)) {
+        p1= start (et, p * 0);
+        p2= end (et, p * 0);
+      }
+      if (is_func (st, CELL)) {
+        q1= p1;
+        q2= p2;
+      }
+      else selection_correct (p1, p2, q1, q2);
+      selection sel= eb->find_check_selection (q1, q2);
+      if (N (focus_get ()) >= N (p))
+        if (!recurse || get_preference ("show full context") == "on") {
+          if (recurse) rs << outlines (sel->rs, pixel);
+          else rs << thicken (sel->rs, 0, 2 * pixel);
+        }
+    }
+    set_access_mode (old_mode);
+    if (recurse || N (rs) == 0) compute_env_rects (path_up (p), rs, recurse);
+  }
+}
+
+/******************************************************************************
+ * handling changes
+ ******************************************************************************/
+
+void
+edit_interface_rep::notify_change (int change) {
+  env_change= env_change | change;
+  needs_update ();
+  if ((change & (THE_TREE | THE_SELECTION | THE_CURSOR)) != 0)
+    manual_focus_set (path (), (change & THE_TREE) != 0);
+  // 选区变化时，使文本工具栏缓存失效
+  // 输入字符时选区变化会触发 THE_SELECTION，进而使工具栏缓存失效并隐藏
+  if ((change & THE_SELECTION) != 0) invalidate_text_popup_cache ();
+}
+
+bool
+edit_interface_rep::has_changed (int question) {
+  return (env_change & question) != 0;
+}
+
+int
+edit_interface_rep::idle_time (int event_type) {
+  if (env_change == 0 && got_focus && (!query_invalid (this)) &&
+      (!check_event (event_type)))
+    return texmacs_time () - last_change;
+  else return 0;
+}
+
+int
+edit_interface_rep::change_time () {
+  return last_change;
+}
+
+void
+edit_interface_rep::update_menus () {
+  bool is_startup= is_startup_tab_buffer (buf->buf->name);
+  bool is_chat   = is_chat_tab_buffer (buf->buf->name);
+  bench_start ("update_menus");
+
+  if (get_server ()->in_full_screen_mode ()) {
+    bench_end ("update_menus");
+    return;
+  }
+
+  if (!is_startup && !is_chat)
+    SERVER (menu_main ("(horizontal (link texmacs-menu))"));
+  if (!is_startup && !is_chat)
+    SERVER (menu_icons (0, "(horizontal (link texmacs-main-icons))"));
+  if (!is_startup)
+    SERVER (menu_icons (1, "(horizontal (link texmacs-mode-icons))"));
+  if (!is_startup && !is_chat)
+    SERVER (menu_icons (2, "(horizontal (link texmacs-focus-icons))"));
+  if (!is_startup && !is_chat)
+    SERVER (menu_icons (3, "(horizontal (link texmacs-extra-icons))"));
+  SERVER (menu_icons (4, "(horizontal (link texmacs-tab-pages))"));
+  if (!is_startup && !is_chat)
+    SERVER (notification_bar ("(horizontal (link texmacs-notification-bar))"));
+  if (is_startup || is_chat) {
+    last_update= last_change;
+    bench_end ("update_menus");
+    return;
+  }
+  array<url> a= buffer_to_windows (buf->buf->name);
+  if (N (a) > 0) {
+    string win = "(string->url \"" * as_string (a[0]) * "\")";
+    string ldyn= "(dynamic (texmacs-left-tools " * win * "))";
+    string rdyn= "(dynamic (texmacs-side-tools " * win * "))";
+    string bdyn= "(dynamic (texmacs-bottom-tools " * win * "))";
+    SERVER (side_tools (1, "(vertical " * ldyn * ")"));
+    SERVER (side_tools (0, "(vertical " * rdyn * ")"));
+    SERVER (bottom_tools (0, "(vertical " * bdyn * ")"));
+  }
+  set_footer ();
+  if (has_current_window ()) {
+    array<url> ws= buffer_to_windows (
+        window_to_buffer (abstract_window (concrete_window ())));
+    int  n = N (ws);
+    bool ns= need_save ();
+    for (int i= 0; i < n; i++)
+      concrete_window (ws[i])->set_modified (ns);
+  }
+  if (!gui_interrupted ()) drd_update ();
+  cache_memorize ();
+  last_update= last_change;
+  save_user_preferences ();
+  bench_end ("update_menus");
+}
+
+int
+edit_interface_rep::find_alt_selection_index (range_set alt_sel, SI y, int b,
+                                              int e) {
+  if (e - b <= 2) return b;
+  int half= ((b + e) >> 2) << 1;
+  int h   = half;
+  SI  sy;
+  while (h < e) {
+    range_set sub_sel= simple_range (alt_sel[h], alt_sel[h + 1]);
+    selection sel    = compute_selection (sub_sel);
+    if (is_nil (sel->rs)) {
+      h+= 2;
+      continue;
+    }
+    sy= (sel->rs->item->y1 + sel->rs->item->y2) >> 1;
+    break;
+  }
+  if (h >= e || y > sy) return find_alt_selection_index (alt_sel, y, b, half);
+  else return find_alt_selection_index (alt_sel, y, h, e);
+}
+
+void
+edit_interface_rep::apply_changes () {
+  // cout << "Apply changes\n";
+  // cout << "et= " << et << "\n";
+  // cout << "tp= " << tp << "\n";
+  // cout << HRULE << "\n";
+
+  if (env_change & (THE_TREE + THE_ENVIRONMENT))
+    table_env_cache= hashmap<tree, rectangles> (rectangles ());
+
+  update_visible ();
+  rectangle new_visible= rectangle (vx1, vy1, vx2, vy2);
+
+  if (tremble_count > 0 && last_change - last_update > 0 &&
+      (idle_time (INTERRUPTED_EVENT) >= 80 ||
+       texmacs_time () - last_event >= 3000)) {
+    tremble_count--;
+    if (tremble_count > 2) {
+      env_change = env_change | (THE_CURSOR + THE_FREEZE);
+      last_change= texmacs_time ();
+    }
+    // cout << "Tremble- " << tremble_count << LF;
+  }
+
+  if (env_change == 0) {
+    if (last_change - last_update > 0 &&
+        idle_time (INTERRUPTED_EVENT) >= 1000 / 6)
+      update_menus ();
+    if (new_visible == last_visible) return;
+  }
+
+  // cout << "Applying changes " << env_change << " to " << get_name() << "\n";
+  // time_t t1= texmacs_time ();
+
+  // cout << "Handling automatic resizing\n";
+  int sb= 1;
+  // Detect zoom-only update to optionally skip re-typeset.
+  bool zoom_changed            = false;
+  bool skip_typeset_due_to_zoom= false;
+  // Snapshot env_change before writing back zoom.
+  int env_before_zoom_update= env_change;
+  if (is_attached (this) && has_current_window ()) {
+    tree new_zoom= as_string (zoomf);
+    tree old_zoom= get_init_value (ZOOM_FACTOR);
+    if (new_zoom != old_zoom) {
+      zoom_changed= true;
+      init_env (ZOOM_FACTOR, new_zoom);
+      notify_change (THE_ENVIRONMENT);
+    }
+
+    if (get_init_string (PAGE_MEDIUM) == "automatic") {
+      SI wx, wy;
+      if (cvw == NULL) ::get_size (get_window (this), wx, wy);
+      else ::get_size (widget (cvw), wx, wy);
+      if (get_init_string (SCROLL_BARS) == "false") sb= 0;
+      if (get_server ()->in_full_screen_mode ()) sb= 0;
+      if (sb) wx-= scrollbar_width ();
+      if (wx != cur_wx || wy != cur_wy || new_zoom != old_zoom) {
+        cur_wx= wx;
+        cur_wy= wy;
+        init_env (PAGE_SCREEN_WIDTH, as_string ((SI) (wx / magf)) * "tmpt");
+        init_env (PAGE_SCREEN_HEIGHT, as_string ((SI) (wy / magf)) * "tmpt");
+        notify_change (THE_ENVIRONMENT);
+      }
+    }
+  }
+  // If zoom-only and medium != automatic, skip re-typeset.
+  if (zoom_changed) {
+    string medium= get_init_string (PAGE_MEDIUM);
+    if (medium != "automatic") {
+      // Require valid layout and no pre-existing env change.
+      bool pre_env_pending= (env_before_zoom_update & THE_ENVIRONMENT) != 0;
+      if (!is_nil (eb) && !pre_env_pending) skip_typeset_due_to_zoom= true;
+    }
+  }
+  if (get_init_string (PAGE_MEDIUM) == "beamer" && full_screen) sb= 0;
+  if (sb != cur_sb) {
+    cur_sb= sb;
+    if (has_current_window ()) concrete_window ()->set_scrollbars (sb);
+  }
+  init_env ("full-screen-mode", string (full_screen ? "true" : "false"));
+
+  // window decorations (menu bar, icon bars, footer)
+  int wb= 2;
+  if (is_attached (this)) {
+    string val= get_init_string (WINDOW_BARS);
+    if (val == "auto") wb= 2;
+    else if (val == "false") wb= 0;
+    else if (val == "true") wb= 1;
+    if (wb != cur_wb) {
+      cur_wb= wb;
+      if (wb != 2) {
+        get_server ()->show_header (wb);
+        get_server ()->show_footer (wb);
+      }
+    }
+  }
+
+  // cout << "Handling selection\n";
+  if (env_change & (THE_TREE + THE_ENVIRONMENT + THE_SELECTION)) {
+    if (!is_nil (selection_rects)) {
+      invalidate (selection_rects);
+      if (!selection_active_any ()) {
+        set_selection (tp, tp);
+        selection_rects= rectangles ();
+      }
+    }
+    if (N (alt_selection_rects) != 0) {
+      rectangles visible (rectangle (vx1, vy1, vx2, vy2));
+      for (int i= 0; i < N (alt_selection_rects); i++)
+        invalidate (alt_selection_rects[i] & visible);
+      range_set alt_sel= append (get_alt_selection ("alternate"),
+                                 get_alt_selection ("brackets"));
+      if (is_empty (alt_sel)) alt_selection_rects= array<rectangles> ();
+    }
+  }
+
+  // cout << "Handling environment\n";
+  if (env_change & THE_ENVIRONMENT) {
+    if (!skip_typeset_due_to_zoom) typeset_invalidate_all ();
+    else typeset_invalidate_env ();
+  }
+
+  // cout << "Handling tree\n";
+  if ((env_change & THE_TREE) ||
+      ((env_change & THE_ENVIRONMENT) && !skip_typeset_due_to_zoom)) {
+    typeset_invalidate_env ();
+    SI x1, y1, x2, y2;
+    bench_start ("typeset " * (as_string (buf->buf->name)));
+    typeset (x1, y1, x2, y2);
+    bench_end ("typeset " * (as_string (buf->buf->name)), 1000);
+    invalidate (x1 - 2 * pixel, y1 - 2 * pixel, x2 + 2 * pixel, y2 + 2 * pixel);
+    // check_data_integrety ();
+    the_ghost_cursor ()= eb->find_check_cursor (tp);
+  }
+
+  // cout << "Handling extents\n";
+  if (env_change & (THE_TREE + THE_ENVIRONMENT + THE_EXTENTS)) {
+    string medium= get_init_string (PAGE_MEDIUM);
+    SI     ex1   = (SI) (((double) eb->x1) * magf);
+    SI     ey1   = (SI) (((double) eb->y1) * magf);
+    SI     ex2   = (SI) (((double) eb->x2) * magf);
+    SI     ey2   = (SI) (((double) eb->y2) * magf);
+    abs_round (ex1, ey1);
+    abs_round (ex2, ey2);
+    SI     w, h;
+    widget me= ::get_canvas (widget (cvw));
+    ::get_size (me, w, h);
+    if (cur_sb && ey2 - ey1 > h) w-= scrollbar_width ();
+    if (cur_sb && ex2 - ex1 > w) h-= scrollbar_width ();
+    if (ex2 - ex1 <= w + 2 * PIXEL) {
+      if (medium == "automatic") ex2= ex1 + w;
+    }
+    if (ey2 - ey1 <= h + 2 * PIXEL) {
+      if (medium == "papyrus" || medium == "automatic") ey1= ey2 - h;
+    }
+    SERVER (set_extents (ex1, ey1, ex2, ey2));
+    // set_extents (eb->x1, eb->y1, eb->x2, eb->y2);
+  }
+
+  // cout << "Cursor\n";
+  temp_invalid_cursor= false;
+  if (env_change & (THE_TREE + THE_ENVIRONMENT + THE_EXTENTS + THE_CURSOR +
+                    THE_SELECTION + THE_FOCUS)) {
+    int THE_CURSOR_BAK= env_change & THE_CURSOR;
+    go_to_here ();
+    env_change= (env_change & (~THE_CURSOR)) | THE_CURSOR_BAK;
+    if ((env_change & (THE_TREE + THE_ENVIRONMENT + THE_CURSOR + THE_SELECTION +
+                       THE_FOCUS)) != 0)
+      if (!inside_active_graphics ())
+        if (get_user_active () && ((env_change & THE_FREEZE) == 0 ||
+                                   (env_change & THE_SELECTION) != 0)) {
+          cursor_visible ();
+          set_user_active (false);
+        }
+
+    SI dw= 0;
+    if (tremble_count > 3) dw= (1 + min (tremble_count - 3, 25)) * 2 * pixel;
+    SI /*P1= zpixel,*/ P2= 2 * zpixel, P3= 3 * zpixel;
+    cursor             cu= get_cursor ();
+    rectangle ocr (oc->ox + ((SI) ((oc->y1 - dw) * oc->slope)) - P3 - dw,
+                   oc->oy + (oc->y1 - dw) - P3,
+                   oc->ox + ((SI) ((oc->y2 + dw) * oc->slope)) + P2 + dw,
+                   oc->oy + (oc->y2 + dw) + P3);
+    if (is_nil (copy_always) || copy_always->item != ocr) {
+      copy_always= rectangles (ocr, copy_always);
+    }
+    invalidate (ocr->x1, ocr->y1, ocr->x2, ocr->y2);
+    rectangle ncr (cu->ox + ((SI) ((cu->y1 - dw) * cu->slope)) - P3 - dw,
+                   cu->oy + (cu->y1 - dw) - P3,
+                   cu->ox + ((SI) ((cu->y2 + dw) * cu->slope)) + P2 + dw,
+                   cu->oy + (cu->y2 + dw) + P3);
+    invalidate (ncr->x1, ncr->y1, ncr->x2, ncr->y2);
+    if (is_nil (copy_always) || copy_always->item != ncr) {
+      copy_always= rectangles (ncr, copy_always);
+    }
+    oc= copy (cu);
+
+    // set hot spot in the gui
+    send_cursor (this, (SI) floor (cu->ox * magf), (SI) floor (cu->oy * magf));
+
+    path sp           = selection_get_cursor_path ();
+    bool semantic_flag= semantic_active (path_up (sp));
+    bool full_context = (get_preference ("show full context") == "on");
+    bool table_cells  = (get_preference ("show table cells") == "on");
+    bool show_focus   = (get_preference ("show focus") == "on");
+    bool semantic_only= (get_preference ("show only semantic focus") == "on");
+    rectangles old_env_rects= env_rects;
+    rectangles old_foc_rects= foc_rects;
+    env_rects               = rectangles ();
+    foc_rects               = rectangles ();
+    path pp                 = path_up (tp);
+    tree pt                 = subtree (et, pp);
+    if (none_accessible (pt))
+      ;
+    else pp= path_up (pp);
+    if (full_context || table_cells) compute_env_rects (pp, env_rects, true);
+    if (show_focus && (!semantic_flag || !semantic_only))
+      compute_env_rects (pp, foc_rects, false);
+    if (env_rects != old_env_rects) {
+      invalidate (old_env_rects);
+      invalidate (env_rects);
+    }
+    else if (env_change & THE_FOCUS) invalidate (env_rects);
+    if (foc_rects != old_foc_rects) {
+      invalidate (old_foc_rects);
+      invalidate (foc_rects);
+    }
+    else if (env_change & THE_FOCUS) invalidate (foc_rects);
+
+    rectangles old_sem_rects  = sem_rects;
+    bool       old_sem_correct= sem_correct;
+    sem_rects                 = rectangles ();
+    sem_correct               = true;
+    if (semantic_flag && show_focus) {
+      path sp= selection_get_cursor_path ();
+      path p1= tp, p2= tp;
+      if (selection_active_any ()) selection_get (p1, p2);
+      sem_correct= semantic_select (path_up (sp), p1, p2, 2);
+      if (!sem_correct) {
+        path sr= semantic_root (path_up (sp));
+        p1     = start (et, sr);
+        p2     = end (et, sr);
+      }
+      path q1, q2;
+      selection_correct (p1, p2, q1, q2);
+      selection sel= eb->find_check_selection (q1, q2);
+      sem_rects << outlines (sel->rs, pixel);
+    }
+    if (sem_rects != old_sem_rects || sem_correct != old_sem_correct) {
+      invalidate (old_sem_rects);
+      invalidate (sem_rects);
+    }
+    else if (env_change & THE_FOCUS) invalidate (sem_rects);
+
+    invalidate_graphical_object ();
+  }
+
+  // cout << "Handling selection\n";
+  if (env_change & THE_SELECTION) {
+    if (selection_active_any ()) {
+      table_selection= selection_active_table ();
+      selection sel;
+      selection_get (sel);
+      rectangles rs= thicken (sel->rs, pixel, 3 * pixel);
+#ifndef QTTEXMACS
+      rs= simplify (::correct (rs - thicken (rs, -pixel, -pixel)));
+#endif
+      selection_rects= rs;
+      invalidate (selection_rects);
+    }
+    // 选区改变后更新文本工具栏
+    update_text_popup ();
+  }
+
+  // cout << "Handling alternative selection\n";
+  if ((env_change & THE_SELECTION) || new_visible != last_visible) {
+    range_set alt_sel= append (get_alt_selection ("alternate"),
+                               get_alt_selection ("brackets"));
+    if (!is_empty (alt_sel)) {
+      alt_selection_rects= array<rectangles> ();
+      int b= 0, e= N (alt_sel);
+      if (e - b >= 200) {
+        b= max (find_alt_selection_index (alt_sel, vy2, b, e) - 100, b);
+        e= min (find_alt_selection_index (alt_sel, vy1, b, e) + 100, e);
+      }
+      for (int i= b; i + 1 < e; i+= 2) {
+        range_set  sub_sel= simple_range (alt_sel[i], alt_sel[i + 1]);
+        selection  sel    = compute_selection (sub_sel);
+        rectangles rs     = thicken (sel->rs, pixel, 3 * pixel);
+#ifndef QTTEXMACS
+        rs= simplify (::correct (rs - thicken (rs, -pixel, -pixel)));
+#endif
+        if (N (rs) != 0) alt_selection_rects << rs;
+      }
+      rectangles visible (new_visible);
+      for (int i= 0; i < N (alt_selection_rects); i++)
+        invalidate (alt_selection_rects[i] & visible);
+    }
+  }
+
+  // cout << "Handling locus highlighting\n";
+  if (env_change & (THE_TREE + THE_ENVIRONMENT + THE_EXTENTS)) {
+    update_mouse_loci ();
+    update_focus_loci ();
+    if (!is_nil (focus_ids) && got_focus)
+      call ("link-follow-ids", object (focus_ids), object ("focus"));
+  }
+  else if (env_change & THE_SELECTION) {
+    update_focus_loci ();
+    call ("close-tooltip");
+    if (!is_nil (focus_ids) && got_focus)
+      call ("link-follow-ids", object (focus_ids), object ("focus"));
+  }
+  if (env_change & THE_LOCUS) {
+    if (locus_new_rects != locus_rects) {
+      invalidate (locus_rects);
+      invalidate (locus_new_rects);
+      locus_rects= locus_new_rects;
+    }
+  }
+
+  // cout << "Handling backing store\n";
+  if (!is_nil (stored_rects)) {
+    if (env_change & (THE_TREE + THE_ENVIRONMENT + THE_SELECTION + THE_EXTENTS))
+      stored_rects= rectangles ();
+  }
+  if (inside_active_graphics ()) {
+    SI gx1, gy1, gx2, gy2;
+    if (find_graphical_region (gx1, gy1, gx2, gy2)) {
+      rectangle gr= rectangle (gx1, gy1, gx2, gy2);
+      if (!is_nil (gr - stored_rects)) invalidate (gx1, gy1, gx2, gy2);
+    }
+  }
+
+  // cout << "Graphics snapping\n";
+  if (inside_active_graphics () && is_current_editor ()) {
+    tree t= as_tree (call ("graphics-get-snap-mode"));
+    set_snap_mode (t);
+    string val= as_string (call ("graphics-get-snap-distance"));
+    set_snap_distance (as_length (val));
+  }
+
+  // cout << "Handling environment changes\n";
+  if (env_change & THE_ENVIRONMENT) send_invalidate_all (this);
+
+  // cout << "Handling menus\n";
+  if (env_change & THE_MENUS) update_menus ();
+
+  // cout << "Handling tooltip\n";
+  if ((env_change & (THE_ENVIRONMENT + THE_EXTENTS + THE_FOCUS)) ||
+      new_visible != last_visible) {
+    call ("modify-comment-tooltip");
+    call ("modify-ref-tooltip");
+  }
+
+  // cout << "Applied changes\n";
+  // time_t t2= texmacs_time ();
+  // if (t2 - t1 >= 10) cout << "apply_changes took " << t2-t1 << "ms\n";
+  env_change  = 0;
+  last_change = texmacs_time ();
+  last_update = last_change - 1;
+  last_visible= new_visible;
+  manual_focus_release ();
+}
+
+/******************************************************************************
+ * Animations
+ ******************************************************************************/
+
+void
+edit_interface_rep::animate () {
+  time_t now_ms= texmacs_time ();
+  if (((double) now_ms) >= anim_next) {
+    rectangles rs= eb->anim_invalid ();
+    invalidate (rs);
+    stored_rects= rectangles ();
+  }
+  if (cursor_blink_active && cursor_blink_period > 0 &&
+      get_preference ("draw cursor") == "on" && now_ms >= cursor_blink_next) {
+    cursor_blink_visible= !cursor_blink_visible;
+    cursor_blink_next   = now_ms + cursor_blink_period;
+    cursor cu           = get_cursor ();
+    SI     dw           = 0;
+    if (tremble_count > 3) dw= (1 + min (tremble_count - 3, 25)) * 2 * pixel;
+    SI x_pad= 3 * zpixel + dw;
+    SI y_pad= 3 * zpixel;
+    SI x1   = cu->ox + ((SI) ((cu->y1 - dw) * cu->slope)) - x_pad;
+    SI y1   = cu->oy + (cu->y1 - dw) - y_pad;
+    SI x2   = cu->ox + ((SI) ((cu->y2 + dw) * cu->slope)) + (2 * zpixel) + dw;
+    SI y2   = cu->oy + (cu->y2 + dw) + y_pad;
+    invalidate (x1, y1, x2, y2);
+  }
+}
+
+/******************************************************************************
+ * Miscellaneous routines
+ ******************************************************************************/
+
+void
+edit_interface_rep::full_screen_mode (bool flag) {
+  full_screen= flag;
+  send_invalidate_all (this);
+  if (!flag) {
+    notify_change (THE_MENUS);
+  }
+}
+
+void
+edit_interface_rep::before_menu_action () {
+  archive_state ();
+  start_editing ();
+  set_input_normal ();
+}
+
+void
+edit_interface_rep::after_menu_action () {
+  notify_change (THE_DECORATIONS);
+  end_editing ();
+  windows_delayed_refresh (1);
+}
+
+void
+edit_interface_rep::cancel_menu_action () {
+  notify_change (THE_DECORATIONS);
+  cancel_editing ();
+  windows_delayed_refresh (1);
+}
+
+rectangle
+edit_interface_rep::get_window_extents () {
+  SI     ox, oy, w, h;
+  widget me= ::get_canvas (widget (cvw));
+  ::get_position (me, ox, oy);
+  ::get_size (me, w, h);
+  SI vx1, vy1, vx2, vy2;
+  SERVER (get_visible (vx1, vy1, vx2, vy2));
+  ox-= vx1;
+  oy-= vy2;
+  return rectangle (ox, oy - h, ox + w, oy);
+}
+
+cursor
+edit_interface_rep::search_cursor (path p) {
+  return eb->find_check_cursor (p);
+}
+
+selection
+edit_interface_rep::search_selection (path start, path end) {
+  return eb->find_check_selection (start, end);
+  // rectangle r= least_upper_bound (sel->rs) / std_shrinkf;
+}
+
+/******************************************************************************
+ * event handlers
+ ******************************************************************************/
+
+bool
+edit_interface_rep::is_editor_widget () {
+  return true;
+}
+
+bool
+edit_interface_rep::is_embedded_widget () {
+  if (!has_subtree (et, rp) || subtree (et, rp) == tree (UNINIT)) return false;
+  string name= as_string (buf->buf->name);
+  return starts (name, "tmfs://aux/");
+  // FIXME: could be made more robust: test should not be based on file name
+}
+
+bool
+edit_interface_rep::is_true_table (path p) {
+  for (path q= p; !is_nil (q) && q != rp; q= path_up (q)) {
+    tree qt= subtree (et, q);
+    if (is_compound (qt, "align") || is_compound (qt, "align*") ||
+        is_compound (qt, "eqnarray") || is_compound (qt, "eqnarray*") ||
+        is_compound (qt, "gather") || is_compound (qt, "gather*") ||
+        is_compound (qt, "multline") || is_compound (qt, "multline*") ||
+        is_compound (qt, "alignat") || is_compound (qt, "alignat*") ||
+        is_compound (qt, "flalign") || is_compound (qt, "flalign*"))
+      return false;
+    if (is_compound (qt, "cases") || is_compound (qt, "choice") ||
+        is_compound (qt, "det") || is_compound (qt, "stack") ||
+        is_compound (qt, "array") || is_compound (qt, "array*") ||
+        is_compound (qt, "matrix") || is_compound (qt, "matrix*") ||
+        is_compound (qt, "bmatrix") || is_compound (qt, "Bmatrix") ||
+        is_compound (qt, "pmatrix") || is_compound (qt, "vmatrix") ||
+        is_compound (qt, "Vmatrix") || is_compound (qt, "smallmatrix"))
+      return false;
+  }
+  return true;
+}
+
+void
+edit_interface_rep::handle_get_size_hint (SI& w, SI& h) {
+  gui_root_extents (w, h);
+}
+
+void
+edit_interface_rep::handle_notify_resize (SI w, SI h) {
+  (void) w;
+  (void) h;
+  if (is_nil (buf)) return;
+  notify_change (THE_TREE + THE_FREEZE);
+}
+
+void
+edit_interface_rep::handle_set_zoom_factor (double zoom) {
+  set_zoom_factor (zoom);
+}

@@ -1,0 +1,170 @@
+<TMU|<tuple|1.1.0|2025.2.3-beta3>>
+
+<style|<tuple|tmudoc|number-europe|preview-ref|smart-ref>>
+
+<\body>
+  <tmdoc-title|Editing tools><label|sec-man-editing-tools>
+
+  In this chapter, we discuss some of the general editing facilities that are implemented in Mogan/Liii STEM. Of course, this includes basic operations that can also be found in other editors: “cut and paste”, “search and replace”, etc. But, more interestingly, some of these facilities take advantage of the additional structure of Mogan/Liii STEM documents. Typical examples of “structured editing features” are “structured cursor movement” and “structured variants”. Traditional operations such as “search and replace” also attempt to exploit the document structure. For instance, when searching <math|x> in math mode, you will only find matches that are also in math mode.
+
+  <section|Cut and paste><label|sec-man-cut-and-paste>
+
+  You can select text and formulas by maintaining the left mouse button. In order to delete the selected region, use <menu|Edit|Cut> or <shortcut|(kbd-cut)>. In order to copy the selected region, first click on <menu|Edit|Copy> or hit <shortcut|(kbd-copy)>. Next, paste it as many times as you want to the location of your cursor, using <menu|Edit|Paste> or <shortcut|(kbd-paste)>. Alternatively, you may copy a selected region using the middle mouse button.
+
+  It is also possible to change the text properties of a selected region. For instance, in order to transform some black text in red, you select it using the left mouse button and click on <render-menu|Format|<rigid|<render-menu|Color|<tabular*|<tformat|<cwith|1|1|1|1|cell-vcorrect|n>|<cwith|1|1|1|1|cell-lsep|1spc>|<cwith|1|1|1|1|cell-rsep|1spc>|<cwith|1|1|1|1|cell-bsep|1spc>|<cwith|1|1|1|1|cell-tsep|1spc>|<cwith|1|1|1|1|cell-width|1.5em>|<cwith|1|1|1|1|cell-hmode|exact>|<cwith|1|1|1|1|cell-background|red>|<table|<row|<cell|>>>>>>>>. Similarly, if you select a formula and you click on <menu|Insert|Fraction>, then the formula becomes the numerator of the newly created fraction.
+
+  When using the copy and paste mechanism to communicate with other applications, text is copied and pasted using the Mogan/Liii STEM data format. You may specify other import and export formats using <menu|Tools|Miscellaneous|Import selections as> <abbr|resp.> <menu|Tools|Miscellaneous|Export selections as>. Alternatively, you may directly copy to or paste from an external format using the first group of entries in the <menu|Edit|Copy to> and <menu|Edit|Paste from> submenus. For instance, a <LaTeX> formula can be pasted inside a Mogan/Liii STEM formula using <menu|Edit|Paste from|LaTeX>.
+
+  By default, copying and pasting uses the “primary clipboard”. Using the remaining entries in the <menu|Edit|Copy to> and <menu|Edit|Paste from> menus, you may specify as many other clipboards as you like. This allows you to keep multiple selections in memory, ready to be pasted.
+
+  There are two ways to make selections using the keyboard. When using the cursor keys <key|left>, <key|right>, <abbr|etc.> while holding down the <key|Shift> button, you may select text while moving around the cursor. Alternatively, you may press <key|Ctrl Space> once to fix a starting position. When moving around using the cursor keys, the text between the starting position and the current position keeps being selected. The selection gets cleared by pressing <key|Ctrl g>.
+
+  Notice that the <key|Ctrl Space> shortcut also allows you to make <em|structured selections>. You may select the current word you are in by pressing <key|Ctrl Space> twice. Each additional time you press <key|Ctrl Space> results in the selection of the smallest structure that englobes the current selection. Ultimately, when the entire document gets selected, pressing <key|Ctrl Space> once more clears the selection.
+
+  <section|Structured Search and Replace><label|sec-man-search-and-replace>
+
+  For search and replace, see <hlink|https://listen.com/docs/guide-structured-search-and-replace.html|https://liiistem.com/docs/guide-structured-search-and-replace.html> for detailed tutorial.
+
+  <section|Undo and redo><label|sec-man-undo-and-redo>
+
+  It is possible to gradually undo the changes you made in a document from the moment that you launched Mogan/Liii STEM. This can be done via <menu|Edit|Undo> or using the keystroke <shortcut|(undo 0)>. Undone changes can be “redone” using <menu|Edit|Redo> or <shortcut|(redo 0)>. Mogan/Liii STEM maintains the entire “history tree” of all your edits. Sometimes, after multiple undo and redo actions, this means that there can be several ways to redo some modification; in that case, <menu|Edit|Redo> becomes a menu in which you can select the appropriate branch.
+
+  We notice that only changes in the document itself are taken into account by the undo system. In particular, modifications of most of the global document properties can not be undone. This includes modifications of the document style, the page size, the main font, etc. The same remark applies to any modifications outside Mogan/Liii STEM that were triggered by your actions. For instance, in a computer algebra session, you can undo your edits inside Mogan/Liii STEM, but not the computations in the external computer algebra system.
+
+  <section|Structured editing><label|sec-man-structured-editing>
+
+  As a general rule, the behavior of most structured editing operations is conditioned by the <em|<rigid|current focus>>. By default, the focus represents the current environment. The current focus is visually indicated by the innermost cyan box around the cursor.
+
+  For instance, the <em|structured insertion> commands <shortcut|(structured-insert-left)>, <shortcut|(structured-insert-right)>, <shortcut|(structured-insert-up)> and <shortcut|(structured-insert-down)> have a particular meaning both inside tables and trees. Inside tables, they allow you to insert new rows and columns (see figure<nbsp><reference|matrix-insert-fig>). Inside trees, they correspond to the insertion of new nodes (see figure<nbsp><reference|tree-insert-fig>). If you are inside a<nbsp>tree inside a table, then the innermost tag is a tree, and node insertions will take precedence over the insertion of new rows and columns. See <hlink|https://liiistem.com/docs/guide-table.html|https://liiistem.com/docs/guide-table.html> for more discussion on table and matrix.
+
+  For most editing operations, a “default particular behavior” has been defined. This behavior may potentially be overridden for a few exceptional tags. In our example of structured insertion, the default behavior of <shortcut|(structured-insert-left)> and <shortcut|(structured-insert-right)> is to insert a new argument to the tag at the left or at the right of the cursor (when allowed). Inside tables, this behavior is overridden so as to insert entire columns.
+
+  <\big-figure>
+    <\equation*>
+      <matrix|<tformat|<table|<row|<cell|a>|<cell|b<cursor>>|<cell|c>>|<row|<cell|d>|<cell|e>|<cell|f>>>>><space|5em><matrix|<tformat|<table|<row|<cell|a>|<cell|b>|<cell|<cursor>>|<cell|c>>|<row|<cell|d>|<cell|e>|<cell|>|<cell|f>>>>><space|2em><matrix|<tformat|<table|<row|<cell|a>|<cell|<cursor>>|<cell|b>|<cell|c>>|<row|<cell|d>|<cell|>|<cell|e>|<cell|f>>>>><space|2em><matrix|<tformat|<table|<row|<cell|a>|<cell|b>|<cell|c>>|<row|<cell|>|<cell|<cursor>>|<cell|>>|<row|<cell|d>|<cell|e>|<cell|f>>>>><space|2em><matrix|<tformat|<table|<row|<cell|>|<cell|<cursor>>|<cell|>>|<row|<cell|a>|<cell|b>|<cell|c>>|<row|<cell|d>|<cell|e>|<cell|f>>>>>
+    </equation*>
+  <|big-figure>
+    <label|matrix-insert-fig>Assume that the cursor is at the position of <cursor> inside the left-most matrix. Then the four other matrices respectively correspond to the insertion of a new column at the left<nbsp>(<shortcut|(structured-insert-left)>) or right<nbsp>(<shortcut|(structured-insert-right)>), <abbr|resp.> a new row above<nbsp>(<shortcut|(structured-insert-up)>) or below<nbsp>(<shortcut|(structured-insert-down)>).
+  </big-figure>
+
+  <\big-figure|<tree|a|b|c<cursor>|d><space|3em><space|3em><tree|a|b|<cursor>|c|d><space|3em><tree|a|b|c|<cursor>|d><space|3em><tree|a|b|<tree|<cursor>|c>|d><space|3em><tree|a|b|<tree|c|<cursor>>|d>>
+    <label|tree-insert-fig>Assume that the cursor is at the position of <cursor> inside the left-most tree. Then the four other trees respectively correspond to the insertion of a new node at the left<nbsp>(<shortcut|(structured-insert-left)>), at the right<nbsp>(<shortcut|(structured-insert-right)>), above<nbsp>(<shortcut|(structured-insert-up)>) or below<nbsp>(<shortcut|(structured-insert-down)>).
+  </big-figure>
+
+  Similarly, still in the case of matrices, the keys <shortcut|(structured-insert-start)>, <shortcut|(structured-insert-end)>, <shortcut|(structured-insert-top)> and <shortcut|(structured-insert-bottom)> can be used for inserting a new first or last column, <abbr|resp.> a new first or last row. The keys <shortcut|(structured-remove-left)> and <shortcut|(structured-remove-right)> are mapped to the commands for backward <abbr|resp.> forward <em|structured deletion>. For matrices, this will result in the removal of the column before or after the cursor (see figure<nbsp><reference|matrix-remove-fig>). In order to remove the enclosing environment you may use <shortcut|(remove-structure-upwards)> or <shortcut|(remove-structure-upwards)>.
+
+  <\big-figure>
+    <\equation*>
+      <matrix|<tformat|<table|<row|<cell|a>|<cell|b<cursor>>|<cell|c>>|<row|<cell|d>|<cell|e>|<cell|f>>>>><space|5em><matrix|<tformat|<table|<row|<cell|b<cursor>>|<cell|c>>|<row|<cell|e>|<cell|f>>>>><space|2em><matrix|<tformat|<table|<row|<cell|a>|<cell|<cursor>c>>|<row|<cell|d>|<cell|f>>>>><space|2em>b<cursor>
+    </equation*>
+  <|big-figure>
+    <label|matrix-remove-fig>Assume that the cursor is at the position of <cursor> inside the left-most matrix. Then pressing the keys<nbsp><shortcut|(structured-remove-left)> and <shortcut|(structured-remove-right)> respectively result in the next two matrices. Pressing either<nbsp><shortcut|(remove-structure-upwards)> or <shortcut|(remove-structure-upwards)> replaces the matrix by the content of the cell in which you are, leaving you with the <math|b> at the right-hand side.
+  </big-figure>
+
+  <section|Structured cursor movement><label|sec-man-structured-move>
+
+  Mogan/Liii STEM implements the three main mechanisms for <em|structured cursor movement>:
+
+  <\enumerate>
+    <item>Traversal of the entire structure of the document.
+
+    <item>Traversal of tags that are similar to the innermost tag.
+
+    <item>Movements inside the innermost tag.
+  </enumerate>
+
+  Most keyboard shortcuts for structured cursor movements can be used in combination with the<nbsp><key|Shift><nbhyph>key so as to simultaneously select text while moving around.
+
+  <paragraph*|Structured traversal of the document>
+
+  The <shortcut|(kbd-select-if-active traverse-left)>, <shortcut|(kbd-select-if-active traverse-right)> keys are used for the structured traversal of the entire document. Inside plain text, <shortcut|(kbd-select-if-active traverse-left)> and <shortcut|(kbd-select-if-active traverse-right)> allow you to move in a word-by-word manner.
+
+  In the presence of other markup, the <shortcut|(kbd-select-if-active traverse-left)> and <shortcut|(kbd-select-if-active traverse-right)> keys allow you to visit all accessible cursor positions in the document, except that we keep moving in a word-by-word manner inside plain text.
+
+  <paragraph*|Traversal of environments that are similar to the innermost tag>
+
+  This type of cursor movement allows you to quickly visit all other environments in the document that are <em|similar> to the innermost environment. The <shortcut|(traverse-previous)> and <shortcut|(traverse-next)> keys allow you move to the previous or next similar tags.
+
+  For instance, if you are inside a section title, then you may move to the previous sectional title using <shortcut|(traverse-previous)>. Subsection and chapter titles are in particular understood to be “similar” to section titles.
+
+  <paragraph*|Movements inside the innermost environment>
+
+  It is also possible to quickly move inside the current environment without quitting it. The shortcuts <shortcut|(structured-left)>, <shortcut|(structured-right)>, <shortcut|(structured-start)> and <shortcut|(structured-end)> provide a way to move to the previous, next, first or last argument of the current environment. Furthermore, the shortcuts <shortcut|(structured-exit-left)> and <shortcut|(structured-exit-right)> may be used to exit the current environment on the left or on the right.
+
+  This default behavior may be overridden in special contexts. For instance, inside tables or trees, they rather correspond to cell-by-cell or node-by-node cursor movement. In addition, these cases associate vertical cursor movements to <shortcut|(structured-up)>, <shortcut|(structured-down)>, <shortcut|(structured-top)> and<nbsp><shortcut|(structured-bottom)>.
+
+  <section|Structured variants><label|sec-man-structured-variants>
+
+  When creating an environment like a theorem, an equation or a list, it frequently happens that one would like to change the environment <em|a posteriori>. The keyboard shortcuts<nbsp><shortcut|(variant-circulate (focus-tree) #t)> and <shortcut|(variant-circulate (focus-tree) #f)> allow you to cycle through the list of <em|structured variants> of the current environment, in forward or backward direction, respectively.
+
+  For instance, assuming that you are inside a theorem, pressing <shortcut|(variant-circulate (focus-tree) #t)> several times will change the theorem into a proposition, a lemma, a corollary, a conjecture, and finally back into a theorem. The <shortcut|(variant-circulate (focus-tree) #f)> key allows you to cycle in the reverse direction: theorem<nbsp><math|<op|\<rightarrow\>>> conjecture<nbsp><math|<op|\<rightarrow\>>> corollary<nbsp><math|<op|\<rightarrow\>>> lemma<nbsp><math|<op|\<rightarrow\>>> proposition<nbsp><math|<op|\<rightarrow\>>> theorem.
+
+  In the case of mathematical formulas, the <shortcut|(variant-circulate (focus-tree) #t)> shortcut allows you to change an inline formula such as <math|a<rsup|2>+b<rsup|2>=c<rsup|2>> into the displayed formula
+
+  <\equation*>
+    a<rsup|2>+b<rsup|2>=c<rsup|2>
+  </equation*>
+
+  while taking care of potential “trailing spaces and punctuation signs”.
+
+  Mogan/Liii STEM also provides the <shortcut|(numbered-toggle (focus-tree))> shortcut for turning numbered environments into unnumbered environments and <em|vice versa>. This works for most common environments like theorems, remarks, tables, equations, etc. Notice that <shortcut|(numbered-toggle (focus-tree))> also turns an unnumbered itemize environment into an enumeration and <em|vice versa>, whereas <shortcut|(variant-circulate (focus-tree) #t)> allows you to cycle between the available kinds of list items (bullets, dashes, arrows, <abbr|etc.>).
+
+  Folding and unfolding provides yet another example of an interesting way to toggle between several environments. Inside a computer algebra session such as
+
+  <\session|pari|default>
+    <\unfolded-io|Pari] >
+      factor (x^15 - 1)
+    <|unfolded-io>
+      <with|color|magenta|%1 = <math|<with|color|blue|<matrix|<tformat|<table|<row|<cell|x-1>|<cell|1>>|<row|<cell|x<rsup|2>+x+1>|<cell|1>>|<row|<cell|x<rsup|4>+x<rsup|3>+x<rsup|2>+x+1>|<cell|1>>|<row|<cell|x<rsup|8>-x<rsup|7>+x<rsup|5>-x<rsup|4>+x<rsup|3>-x+1>|<cell|1>>>>>>>>
+    </unfolded-io>
+  </session>
+
+  you may click on “<verbatim|<with|color|dark brown|Pari]>>” in order to fold the output (only the input remains visible) and click once again in order to unfold back to the original state. The <shortcut|(alternate-toggle (focus-tree))> shortcut achieves the same effect. There various other foldable environments, most of which are available through <menu|Insert|Fold>.
+
+  <section|Positioning and resizing objects><label|sec-man-structured-geometry>
+
+  The <prefix|structured:geometry> prefix may be used for positioning and resizing objects. For instance, inside a cell of a<nbsp>table, you may use <key|structured:geometry right> to align the cell more to the right. Behind a space introduced <em|via> <menu|Format|Space>, the same key allows you to increase the width of space. More generally, the following shortcuts are implemented:
+
+  <\description>
+    <item*|<shortcut|(geometry-left)>>Decrease the horizontal size of an object, or align more to the left.
+
+    <item*|<shortcut|(geometry-right)>>Increase the horizontal size of an object, or align more to the right.
+
+    <item*|<shortcut|(geometry-down)>>Decrease/increase the vertical size of an object, or align more to the bottom.
+
+    <item*|<shortcut|(geometry-up)>>Increase/decrease the vertical size of an object, or align more to the top.
+
+    <item*|<shortcut|(geometry-start)>>Decrease the horizontal offset of an object, or left align.
+
+    <item*|<shortcut|(geometry-end)>>Increase the horizontal offset of an object, or right align.
+
+    <item*|<shortcut|(geometry-bottom)>>Decrease the vertical offset of an object, or align at the bottom.
+
+    <item*|<shortcut|(geometry-top)>>Increase the vertical offset of an object, or align at the top.
+
+    <item*|<shortcut|(geometry-reset)>>Revert the geometry (size, position, alignment) to the defaults.
+
+    <item*|<shortcut|(geometry-circulate #t)>, <shortcut|(geometry-circulate #f)>>Circulate among the available length units for specifying the geometry.
+
+    <item*|<shortcut|(geometry-slower)>, <shortcut|(geometry-faster)>>Decrease or increase the step size when positioning or resizing.
+  </description>
+
+  Particular tags to which the shortcuts apply are the following:
+
+  <\description>
+    <item*|Spaces>Both horizontal and vertical spaces from the <menu|Format|Space> menu. You should put the cursor just after the space tag for the shortcuts to apply.
+
+    <item*|Box modifiers>The tags <markup|move>, <markup|shift>, <markup|resize>, <markup|extend>, <markup|clipped>, <markup|smashed>, <markup|inflate> from the <menu|Format|Adjust> menu.
+
+    <item*|Animations>The durations of animations can be modified using <shortcut|(geometry-left)> and <shortcut|(geometry-right)>.
+
+    <item*|Images>The size and alignment of images can be changed.
+  </description>
+</body>
+
+<\initial>
+  <\collection>
+    <associate|page-medium|paper>
+    <associate|page-screen-margin|false>
+  </collection>
+</initial>
