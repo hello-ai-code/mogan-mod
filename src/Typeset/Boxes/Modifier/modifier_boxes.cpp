@@ -42,7 +42,6 @@ modifier_box_rep::subbox (int i) {
   return b;
 }
 
-void
 tree
 modifier_box_rep::message (tree t, SI x, SI y, rectangles& rs) {
   return b->message (t, x, y, rs);
