@@ -1,7 +1,8 @@
 name: Build on Debian 13
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, master]
     paths:
       - "src/**"
       - "!src/Plugins/Macos/**"
@@ -13,7 +14,7 @@ on:
       - ".github/workflows/ci-debian13.yml"
       - "TeXmacs/tests/*.scm"
   pull_request:
-    branches: [main]
+    branches: [main, master]
     paths:
       - "src/**"
       - "!src/Plugins/Macos/**"
