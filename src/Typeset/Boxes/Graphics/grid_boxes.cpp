@@ -56,18 +56,19 @@ grid_box_rep::grid_box_rep (path ip2, grid g2, frame f2, SI un2, point lim1,
 }
 
 void
-RenderVisitor::visit (grid_box_rep& box) {
+RenderVisitor::visit (grid_box_rep& bx) {
+  typedef grid_box_rep B;
   renderer ren= this->ren;
   int i;
-  if (box.first_time || ren->pixel != box.ren_pixel) {
-    point  p1= box.f[point (box.x1, box.y1)];
-    point  p2= box.f[point (box.x2, box.y2)];
+  if (bx.first_time || ren->pixel != bx.ren_pixel) {
+    point  p1= bx.f[point (bx.x1, bx.y1)];
+    point  p2= bx.f[point (bx.x2, bx.y2)];
     point  l1= point (min (p1[0], p2[0]), min (p1[1], p2[1]));
     point  l2= point (max (p1[0], p2[0]), max (p1[1], p2[1]));
     point  e1= l1, e2= point (l1[0], l2[1]);
     point  e3= l2, e4= point (l2[0], l1[1]);
-    point  e1t= box.f (e1), e2t= box.f (e2);
-    point  e3t= box.f (e3), e4t= box.f (e4);
+    point  e1t= bx.f (e1), e2t= bx.f (e2);
+    point  e3t= bx.f (e3), e4t= bx.f (e4);
     double L1t, L2t, L3t, L4t;
     L1t= norm (e2t - e1t);
     L2t= norm (e3t - e2t);
@@ -76,21 +77,21 @@ RenderVisitor::visit (grid_box_rep& box) {
     if (fnull (L1t, 1e-6) || fnull (L2t, 1e-6) || fnull (L3t, 1e-6) ||
         fnull (L4t, 1e-6))
       return;
-    array<grid_curve> grads= box.g->get_curves (l1, l2);
+    array<grid_curve> grads= bx.g->get_curves (l1, l2);
 
     for (i= 0; i < N (grads); i++) {
-      curve c= box.f (grads[i]->c);
-      box.bs << curve_box (decorate (box.ip), c, 1.0,
+      curve c= bx.f (grads[i]->c);
+      bx.bs << curve_box (decorate (bx.ip), c, 1.0,
                        pencil (named_color (grads[i]->col), ren->pixel),
                        array<bool> (0), array<point> (0), 0, brush (false),
                        array<box> (0));
     }
-    box.first_time= false;
-    box.ren_pixel = ren->pixel;
+    bx.first_time= false;
+    bx.ren_pixel = ren->pixel;
   }
-  for (i= 0; i < N (box.bs); i++) {
+  for (i= 0; i < N (bx.bs); i++) {
     RenderVisitor rv (ren);
-    box.bs[i]->accept (rv);
+    bx.bs[i]->accept (rv);
   }
 }
 
