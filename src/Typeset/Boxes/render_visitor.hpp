@@ -23,7 +23,26 @@ public:
   RenderVisitor (renderer_rep* r): ren (r) {}
 
   virtual void visit_default (box_rep& b) override;
-  // visit() overrides are defined in the individual box .cpp files
+
+  // Explicit visit() declarations required by MSVC
+  // (must be declared in the derived class before out-of-class definition)
+  virtual void visit (test_box_rep& b) override;
+  virtual void visit (line_box_rep& b) override;
+  virtual void visit (polygon_box_rep& b) override;
+  virtual void visit (arc_box_rep& b) override;
+  virtual void visit (image_box_rep& b) override;
+  virtual void visit (text_box_rep& b) override;
+  virtual void visit (bracket_box_rep& b) override;
+  virtual void visit (phrase_box_rep& b) override;
+  virtual void visit (specific_box_rep& b) override;
+  virtual void visit (toc_box_rep& b) override;
+  virtual void visit (page_box_rep& b) override;
+  virtual void visit (stack_box_rep& b) override;
+  virtual void visit (remember_box_rep& b) override;
+  virtual void visit (point_box_rep& b) override;
+  virtual void visit (curve_box_rep& b) override;
+  virtual void visit (spacial_box_rep& b) override;
+  virtual void visit (grid_box_rep& b) override;
 };
 
 #endif // defined RENDER_VISITOR_H
