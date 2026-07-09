@@ -180,7 +180,7 @@ public:
   virtual void visit (vcorrect_box_rep& b)           {}
   virtual void visit (vresize_box_rep& b)            {}
   virtual void visit (wide_box_rep& b)               {}
-protected:
+public:
   // Default fallback for unhandled types.
   // Concrete visitors override this to define base behavior.
   virtual void visit_default (box_rep& b) = 0;

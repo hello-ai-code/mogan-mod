@@ -88,8 +88,10 @@ RenderVisitor::visit (grid_box_rep& box) {
     box.first_time= false;
     box.ren_pixel = ren->pixel;
   }
-  for (i= 0; i < N (box.bs); i++)
-    box.bs[i]->accept (RenderVisitor (ren));
+  for (i= 0; i < N (box.bs); i++) {
+    RenderVisitor rv (ren);
+    box.bs[i]->accept (rv);
+  }
 }
 
 gr_selections
