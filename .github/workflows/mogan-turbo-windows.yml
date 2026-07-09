@@ -56,10 +56,6 @@ jobs:
       # ----------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          repository: MoganLab/mogan
-          ref: main
-          fetch-depth: 1
 
       # ----------------------------------------------------------
       # 4. 缓存
