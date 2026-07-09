@@ -3,7 +3,12 @@ name: Build and Test on windows
 on:
   workflow_dispatch:
 
-env:
+jobs:
+  windowsbuild:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    if: always()
+    env:
       # Force xmake to a specific folder (for cache)
       XMAKE_GLOBALDIR: "${{ github.workspace }}\\.xmake-global"
     steps:
