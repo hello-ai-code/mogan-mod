@@ -98,7 +98,6 @@ composite_box_rep::left_justify () {
  * Routines for composite boxes
  ******************************************************************************/
 
-void
 int
 composite_box_rep::subnr () {
   return N (bs);
