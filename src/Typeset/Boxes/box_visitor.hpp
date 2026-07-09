@@ -100,87 +100,86 @@ public:
   virtual ~BoxVisitor () = default;
 
   // Every box type gets a visit() overload.
-  // By default each forwards to visit_default().
+  // Default base implementations are empty (no-op for unhandled types).
   // Concrete visitors override only the types they care about.
 
-  virtual void visit (box_rep& b)                    { visit_default (b); }
-  virtual void visit (anim_box_rep& b)               { visit_default (b); }
-  virtual void visit (anim_compose_box_rep& b)       { visit_default (b); }
-  virtual void visit (anim_constant_box_rep& b)      { visit_default (b); }
-  virtual void visit (anim_effect_box_rep& b)        { visit_default (b); }
-  virtual void visit (anim_progressive_box_rep& b)   { visit_default (b); }
-  virtual void visit (anim_repeat_box_rep& b)        { visit_default (b); }
-  virtual void visit (anim_translate_box_rep& b)     { visit_default (b); }
-  virtual void visit (arc_box_rep& b)                { visit_default (b); }
-  virtual void visit (art_box_rep& b)                { visit_default (b); }
-  virtual void visit (bracket_box_rep& b)            { visit_default (b); }
-  virtual void visit (case_box_rep& b)               { visit_default (b); }
-  virtual void visit (cell_box_rep& b)               { visit_default (b); }
-  virtual void visit (clip_box_rep& b)               { visit_default (b); }
-  virtual void visit (composite_anim_box_rep& b)     { visit_default (b); }
-  virtual void visit (composite_box_rep& b)          { visit_default (b); }
-  virtual void visit (concat_box_rep& b)             { visit_default (b); }
-  virtual void visit (control_box_box_rep& b)        { visit_default (b); }
-  virtual void visit (control_lazy_box_rep& b)       { visit_default (b); }
-  virtual void visit (control_tree_box_rep& b)       { visit_default (b); }
-  virtual void visit (crop_marks_box_rep& b)         { visit_default (b); }
-  virtual void visit (curve_box_rep& b)              { visit_default (b); }
-  virtual void visit (dummy_box_rep& b)              { visit_default (b); }
-  virtual void visit (dummy_script_box_rep& b)       { visit_default (b); }
-  virtual void visit (effect_box_rep& b)             { visit_default (b); }
-  virtual void visit (empty_box_rep& b)              { visit_default (b); }
-  virtual void visit (flag_box_rep& b)               { visit_default (b); }
-  virtual void visit (frac_box_rep& b)               { visit_default (b); }
-  virtual void visit (frozen_box_rep& b)             { visit_default (b); }
-  virtual void visit (graphics_box_rep& b)           { visit_default (b); }
-  virtual void visit (graphics_group_box_rep& b)     { visit_default (b); }
-  virtual void visit (grid_box_rep& b)               { visit_default (b); }
-  virtual void visit (highlight_box_rep& b)          { visit_default (b); }
-  virtual void visit (image_box_rep& b)              { visit_default (b); }
-  virtual void visit (info_box_rep& b)               { visit_default (b); }
-  virtual void visit (lim_box_rep& b)                { visit_default (b); }
-  virtual void visit (line_box_rep& b)               { visit_default (b); }
-  virtual void visit (locus_box_rep& b)              { visit_default (b); }
-  virtual void visit (macro_box_rep& b)              { visit_default (b); }
-  virtual void visit (macro_delimiter_box_rep& b)    { visit_default (b); }
-  virtual void visit (marker_box_rep& b)             { visit_default (b); }
-  virtual void visit (move_box_rep& b)               { visit_default (b); }
-  virtual void visit (move_delimiter_box_rep& b)     { visit_default (b); }
-  virtual void visit (neg_box_rep& b)                { visit_default (b); }
-  virtual void visit (note_box_rep& b)               { visit_default (b); }
-  virtual void visit (page_border_box_rep& b)        { visit_default (b); }
-  virtual void visit (page_box_rep& b)               { visit_default (b); }
-  virtual void visit (phrase_box_rep& b)             { visit_default (b); }
-  virtual void visit (point_box_rep& b)              { visit_default (b); }
-  virtual void visit (polygon_box_rep& b)            { visit_default (b); }
-  virtual void visit (relay_box_rep& b)              { visit_default (b); }
-  virtual void visit (remember_box_rep& b)           { visit_default (b); }
-  virtual void visit (repeat_box_rep& b)             { visit_default (b); }
-  virtual void visit (resize_box_rep& b)             { visit_default (b); }
-  virtual void visit (scatter_box_rep& b)            { visit_default (b); }
-  virtual void visit (scrollbar_box_rep& b)          { visit_default (b); }
-  virtual void visit (shift_box_rep& b)              { visit_default (b); }
-  virtual void visit (shorter_box_rep& b)            { visit_default (b); }
-  virtual void visit (side_box_rep& b)               { visit_default (b); }
-  virtual void visit (sound_box_rep& b)              { visit_default (b); }
-  virtual void visit (spacial_box_rep& b)            { visit_default (b); }
-  virtual void visit (specific_box_rep& b)           { visit_default (b); }
-  virtual void visit (sqrt_box_rep& b)               { visit_default (b); }
-  virtual void visit (stack_box_rep& b)              { visit_default (b); }
-  virtual void visit (superpose_box_rep& b)          { visit_default (b); }
-  virtual void visit (symbol_box_rep& b)             { visit_default (b); }
-  virtual void visit (table_box_rep& b)              { visit_default (b); }
-  virtual void visit (tag_box_rep& b)                { visit_default (b); }
-  virtual void visit (test_box_rep& b)               { visit_default (b); }
-  virtual void visit (text_at_box_rep& b)            { visit_default (b); }
-  virtual void visit (text_box_rep& b)               { visit_default (b); }
-  virtual void visit (toc_box_rep& b)                { visit_default (b); }
-  virtual void visit (transformed_box_rep& b)        { visit_default (b); }
-  virtual void visit (tree_box_rep& b)               { visit_default (b); }
-  virtual void visit (vcorrect_box_rep& b)           { visit_default (b); }
-  virtual void visit (vresize_box_rep& b)            { visit_default (b); }
-  virtual void visit (wide_box_rep& b)               { visit_default (b); }
-
+  virtual void visit (box_rep& b)                    {}
+  virtual void visit (anim_box_rep& b)               {}
+  virtual void visit (anim_compose_box_rep& b)       {}
+  virtual void visit (anim_constant_box_rep& b)      {}
+  virtual void visit (anim_effect_box_rep& b)        {}
+  virtual void visit (anim_progressive_box_rep& b)   {}
+  virtual void visit (anim_repeat_box_rep& b)        {}
+  virtual void visit (anim_translate_box_rep& b)     {}
+  virtual void visit (arc_box_rep& b)                {}
+  virtual void visit (art_box_rep& b)                {}
+  virtual void visit (bracket_box_rep& b)            {}
+  virtual void visit (case_box_rep& b)               {}
+  virtual void visit (cell_box_rep& b)               {}
+  virtual void visit (clip_box_rep& b)               {}
+  virtual void visit (composite_anim_box_rep& b)     {}
+  virtual void visit (composite_box_rep& b)          {}
+  virtual void visit (concat_box_rep& b)             {}
+  virtual void visit (control_box_box_rep& b)        {}
+  virtual void visit (control_lazy_box_rep& b)       {}
+  virtual void visit (control_tree_box_rep& b)       {}
+  virtual void visit (crop_marks_box_rep& b)         {}
+  virtual void visit (curve_box_rep& b)              {}
+  virtual void visit (dummy_box_rep& b)              {}
+  virtual void visit (dummy_script_box_rep& b)       {}
+  virtual void visit (effect_box_rep& b)             {}
+  virtual void visit (empty_box_rep& b)              {}
+  virtual void visit (flag_box_rep& b)               {}
+  virtual void visit (frac_box_rep& b)               {}
+  virtual void visit (frozen_box_rep& b)             {}
+  virtual void visit (graphics_box_rep& b)           {}
+  virtual void visit (graphics_group_box_rep& b)     {}
+  virtual void visit (grid_box_rep& b)               {}
+  virtual void visit (highlight_box_rep& b)          {}
+  virtual void visit (image_box_rep& b)              {}
+  virtual void visit (info_box_rep& b)               {}
+  virtual void visit (lim_box_rep& b)                {}
+  virtual void visit (line_box_rep& b)               {}
+  virtual void visit (locus_box_rep& b)              {}
+  virtual void visit (macro_box_rep& b)              {}
+  virtual void visit (macro_delimiter_box_rep& b)    {}
+  virtual void visit (marker_box_rep& b)             {}
+  virtual void visit (move_box_rep& b)               {}
+  virtual void visit (move_delimiter_box_rep& b)     {}
+  virtual void visit (neg_box_rep& b)                {}
+  virtual void visit (note_box_rep& b)               {}
+  virtual void visit (page_border_box_rep& b)        {}
+  virtual void visit (page_box_rep& b)               {}
+  virtual void visit (phrase_box_rep& b)             {}
+  virtual void visit (point_box_rep& b)              {}
+  virtual void visit (polygon_box_rep& b)            {}
+  virtual void visit (relay_box_rep& b)              {}
+  virtual void visit (remember_box_rep& b)           {}
+  virtual void visit (repeat_box_rep& b)             {}
+  virtual void visit (resize_box_rep& b)             {}
+  virtual void visit (scatter_box_rep& b)            {}
+  virtual void visit (scrollbar_box_rep& b)          {}
+  virtual void visit (shift_box_rep& b)              {}
+  virtual void visit (shorter_box_rep& b)            {}
+  virtual void visit (side_box_rep& b)               {}
+  virtual void visit (sound_box_rep& b)              {}
+  virtual void visit (spacial_box_rep& b)            {}
+  virtual void visit (specific_box_rep& b)           {}
+  virtual void visit (sqrt_box_rep& b)               {}
+  virtual void visit (stack_box_rep& b)              {}
+  virtual void visit (superpose_box_rep& b)          {}
+  virtual void visit (symbol_box_rep& b)             {}
+  virtual void visit (table_box_rep& b)              {}
+  virtual void visit (tag_box_rep& b)                {}
+  virtual void visit (test_box_rep& b)               {}
+  virtual void visit (text_at_box_rep& b)            {}
+  virtual void visit (text_box_rep& b)               {}
+  virtual void visit (toc_box_rep& b)                {}
+  virtual void visit (transformed_box_rep& b)        {}
+  virtual void visit (tree_box_rep& b)               {}
+  virtual void visit (vcorrect_box_rep& b)           {}
+  virtual void visit (vresize_box_rep& b)            {}
+  virtual void visit (wide_box_rep& b)               {}
 protected:
   // Default fallback for unhandled types.
   // Concrete visitors override this to define base behavior.
