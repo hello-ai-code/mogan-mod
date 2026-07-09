@@ -75,7 +75,6 @@ struct text_box_rep : public box_rep {
   box    right_auto_spacing (SI size);
   box    left_contract_kerning (double factor);
   box    right_contract_kerning (double factor);
-  void accept (BoxVisitor& v);
 };
 
 void
