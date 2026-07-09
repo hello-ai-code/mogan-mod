@@ -19,6 +19,15 @@ on:
         description: 🗑️ 清除缓存
         type: boolean
         default: false
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - '!src/Plugins/Macos/**'
+      - '!src/Plugins/Unix/**'
+      - 'xmake.lua'
+      - 'xmake/packages.lua'
+      - '.github/workflows/mogan-turbo-windows.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-windows

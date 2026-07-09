@@ -2,7 +2,7 @@ name: Build and Test on windows
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
     paths:
       - 'src/**'
       - '!src/Plugins/Macos/**'
@@ -16,7 +16,7 @@ on:
       - 'xmake-requires.lock'
       - '.github/workflows/ci-xmake-windows.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
     paths:
       - 'src/**'
       - '!src/Plugins/Macos/**'
