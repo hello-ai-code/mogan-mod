@@ -140,7 +140,7 @@ public:
   virtual      operator tree ()= 0;
   virtual void pre_display (renderer& ren);
   virtual void post_display (renderer& ren);
-  virtual void display (renderer ren)= 0;
+  virtual void display (renderer ren);
   virtual void display_background (renderer ren);
   virtual void accept (BoxVisitor& v);
   virtual void clear_incomplete (rectangles& rs, SI pixel, int i, int i1,

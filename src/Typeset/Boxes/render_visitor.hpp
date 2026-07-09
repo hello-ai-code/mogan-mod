@@ -13,8 +13,7 @@
 #define RENDER_VISITOR_H
 
 #include "Boxes/box_visitor.hpp"
-
-class renderer;
+#include "renderer.hpp"
 
 class RenderVisitor : public BoxVisitor {
 public:

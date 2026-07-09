@@ -715,6 +715,11 @@ box_rep::post_display (renderer& ren) {
 }
 
 void
+box_rep::display (renderer ren) {
+  (void) ren;
+}
+
+void
 box_rep::display_background (renderer ren) {
   (void) ren;
 }
