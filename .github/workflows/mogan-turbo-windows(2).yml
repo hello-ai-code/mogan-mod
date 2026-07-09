@@ -1,0 +1,222 @@
+# .github/workflows/mogan-turbo-windows.yml
+# Mogan Windows 极速版 — 基于官方 cd_research_on_windows.yml 改造
+#
+# 流程完全照搬官方:
+#   config → build → install → pack
+# 区别只在编译参数（turbo 优化选项）
+#
+# 产出物: 完整安装包 (.exe) + 便携版 (ZIP)
+#
+# 触发: workflow_dispatch (手动)
+# 预计: 首次 40-50 min / 缓存命中 10-15 min
+
+name: Mogan Turbo Build (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: 🗑️ 清除缓存
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-windows
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 🪟 Windows
+    runs-on: windows-2025
+    timeout-minutes: 90
+
+    steps:
+      # ----------------------------------------------------------
+      # 1. 清理缓存
+      # ----------------------------------------------------------
+      - name: Clear cache
+        if: ${{ github.event.inputs.clear_cache == 'true' }}
+        run: |
+          Remove-Item -Recurse -Force "${{ github.workspace }}\.xmake-global" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "${{ github.workspace }}\build" -ErrorAction SilentlyContinue
+
+      # ----------------------------------------------------------
+      # 2. xmake (官方 action)
+      # ----------------------------------------------------------
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: v3.0.4
+
+      - name: Update repo
+        run: xrepo update-repo
+
+      # ----------------------------------------------------------
+      # 3. 检出代码
+      # ----------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: MoganLab/mogan
+          ref: main
+          fetch-depth: 1
+
+      # ----------------------------------------------------------
+      # 4. 缓存
+      # ----------------------------------------------------------
+      - name: Cache xrepo packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-
+
+      # ----------------------------------------------------------
+      # 5. 配置 — 沿用官方 -m release，加上 turbo 选项
+      # ----------------------------------------------------------
+      - name: Configure
+        run: |
+          xmake config --yes -vD -m release `
+            --startup_tab=false `
+            --text_toolbar=false `
+            --tutorial=false `
+            --debug_with_timestamp=false
+
+      # ----------------------------------------------------------
+      # 6. 编译
+      # ----------------------------------------------------------
+      - name: Build
+        run: |
+          xmake build -vD stem
+          Write-Host "✅ Build done"
+
+      # ----------------------------------------------------------
+      # 7. 安装 — 官方流程！自动部署所有 DLL
+      #    输出到 build/packages/stem/data/bin/
+      # ----------------------------------------------------------
+      - name: Install
+        run: |
+          xmake install -vD stem
+          Write-Host "✅ Install done"
+
+      # ----------------------------------------------------------
+      # 8. 安装 Pandoc + Ghostscript + Noto 字体
+      #    (照搬官方 CD 流程)
+      # ----------------------------------------------------------
+      - name: Install pandoc, ghostscript, Noto fonts
+        shell: pwsh
+        run: |
+          # 用 scoop 装 pandoc 和 ghostscript
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+          scoop install wget pandoc ghostscript --global
+
+          # 复制 pandoc 到包目录
+          $pandocSrc = "$env:ProgramData\scoop\apps\pandoc\current\pandoc.exe"
+          $pandocDst = "${{ github.workspace }}\build\packages\stem\data\bin\pandoc.exe"
+          if (Test-Path $pandocSrc) {
+            Copy-Item $pandocSrc $pandocDst -Force
+            Write-Host "✅ pandoc copied"
+          }
+
+          # 下载 Noto 字体（中文字体）
+          $fontDir = "${{ github.workspace }}\TeXmacs\fonts\opentype\noto"
+          New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
+          $fonts = @(
+            "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/NotoSansCJK-Bold.ttc",
+            "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/NotoSansCJK-Regular.ttc",
+            "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/NotoSerifCJK-Bold.ttc",
+            "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/NotoSerifCJK-Regular.ttc"
+          )
+          foreach ($url in $fonts) {
+            $fn = Split-Path $url -Leaf
+            wget -q $url -O "$fontDir\$fn"
+            Write-Host "✅ Downloaded $fn"
+          }
+
+          # 下载 ghostscript
+          $gsDst = "${{ github.workspace }}\build\packages\stem\data\bin\gs.exe"
+          wget -q "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/gs.exe" -O $gsDst
+          Write-Host "✅ gs.exe downloaded"
+
+      # ----------------------------------------------------------
+      # 9. 生成安装包 — 官方流程！产出 NSIS .exe 安装器
+      #    输出到 build/xpack/stem/*.exe
+      # ----------------------------------------------------------
+      - name: Generate Installer
+        run: |
+          xmake pack --yes -vD stem
+          Write-Host "✅ Pack done"
+
+      # ----------------------------------------------------------
+      # 10. 查看产物
+      # ----------------------------------------------------------
+      - name: Inspect outputs
+        shell: pwsh
+        run: |
+          Write-Host "=== Installer ==="
+          $packDir = "build\xpack\stem"
+          if (Test-Path $packDir) {
+            Get-ChildItem -Path $packDir -Filter "*.exe" | Select-Object Name, Length
+          }
+          Write-Host ""
+          Write-Host "=== Package directory ==="
+          $pkgDir = "build\packages\stem"
+          if (Test-Path $pkgDir) {
+            Get-ChildItem -Path $pkgDir -Recurse -Include *.exe,*.dll | Group-Object Extension |
+              Select-Object Count, Name
+          }
+
+      # ----------------------------------------------------------
+      # 11. 上传安装包
+      # ----------------------------------------------------------
+      - name: Upload Installer (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mogan-turbo-windows-installer
+          path: build/xpack/stem/*.exe
+          retention-days: 7
+          compression-level: 1
+
+      # ----------------------------------------------------------
+      # 12. 再上传一个便携 ZIP（解压即用）
+      # ----------------------------------------------------------
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $pkgDir = "build\packages\stem"
+          if (Test-Path $pkgDir) {
+            Compress-Archive -Path "$pkgDir\*" -DestinationPath mogan-turbo-portable.zip -Force
+            Write-Host "✅ Portable ZIP created"
+            Get-Item mogan-turbo-portable.zip | Select-Object Name, Length
+          }
+
+      - name: Upload Portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: mogan-turbo-windows-portable
+          path: mogan-turbo-portable.zip
+          retention-days: 7
+          compression-level: 1
+
+      # ----------------------------------------------------------
+      # 13. 摘要
+      # ----------------------------------------------------------
+      - name: Summary
+        run: |
+          Write-Host "========================================="
+          Write-Host "  ✅ Mogan Turbo Build Complete"
+          Write-Host "========================================="
+          Write-Host ""
+          Write-Host "  📥 Download Artifacts:"
+          Write-Host ""
+          Write-Host "  1. mogan-turbo-windows-installer"
+          Write-Host "     → 安装包 (.exe)，双击安装"
+          Write-Host ""
+          Write-Host "  2. mogan-turbo-windows-portable"
+          Write-Host "     → 便携版 (ZIP)，解压即用"
+          Write-Host ""
+          Write-Host "  ⚡ 二次构建: ~10 min (缓存命中)"
+          Write-Host "========================================="
