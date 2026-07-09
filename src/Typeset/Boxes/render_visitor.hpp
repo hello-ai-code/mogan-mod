@@ -13,13 +13,14 @@
 #define RENDER_VISITOR_H
 
 #include "Boxes/box_visitor.hpp"
-#include "renderer.hpp"
+
+class renderer_rep;
 
 class RenderVisitor : public BoxVisitor {
 public:
-  renderer ren;
+  renderer_rep* ren;
 
-  RenderVisitor (renderer r): ren (r) {}
+  RenderVisitor (renderer_rep* r): ren (r) {}
 
   virtual void visit_default (box_rep& b) override;
   // visit() overrides are defined in the individual box .cpp files

@@ -1,42 +1,9 @@
 name: Build and Test on windows
 
 on:
-  push:
-    branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - '!src/Plugins/Macos/**'
-      - '!src/Plugins/Unix/**'
-      - 'tests/**'
-      - 'TeXmacs/plugins/goldfish/src/*'
-      - 'xmake.lua'
-      - 'xmake/packages.lua'
-      - 'xmake/research.lua'
-      - 'xmake/packages/**'
-      - 'xmake-requires.lock'
-      - '.github/workflows/ci-xmake-windows.yml'
-  pull_request:
-    branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - '!src/Plugins/Macos/**'
-      - '!src/Plugins/Unix/**'
-      - 'tests/**'
-      - 'TeXmacs/plugins/goldfish/src/*'
-      - 'xmake.lua'
-      - 'xmake/packages.lua'
-      - 'xmake/research.lua'
-      - 'xmake/packages/**'
-      - 'xmake-requires.lock'
-      - '.github/workflows/ci-xmake-windows.yml'
   workflow_dispatch:
 
-jobs:
-  windowsbuild:
-    runs-on: windows-2025
-    timeout-minutes: 45
-    if: always()
-    env:
+env:
       # Force xmake to a specific folder (for cache)
       XMAKE_GLOBALDIR: "${{ github.workspace }}\\.xmake-global"
     steps:
