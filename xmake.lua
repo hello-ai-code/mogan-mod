@@ -824,6 +824,10 @@ target("libmogan") do
     remove_files("src/Typeset/Boxes/Modifier/change_boxes.cpp")
     remove_files("src/Typeset/Boxes/Graphics/graphics_boxes.cpp")
     remove_files("src/Typeset/Boxes/Graphics/grid_boxes.cpp")
+    -- render_visitor.cpp must also compile in stem (vtable references all visit() fns)
+    remove_files("src/Typeset/Boxes/render_visitor.cpp")
+    -- boxes.cpp (redraw() uses RenderVisitor) must also compile in stem
+    remove_files("src/Typeset/Boxes/Basic/boxes.cpp")
 
     add_files("src/Plugins/Qt/**.cpp", "src/Plugins/Qt/**.hpp")
     add_files("src/Mogan/Cache/**.cpp", "src/Mogan/Cache/**.hpp")
@@ -1003,6 +1007,9 @@ target("stem") do
     add_files("src/Typeset/Boxes/Modifier/change_boxes.cpp")
     add_files("src/Typeset/Boxes/Graphics/graphics_boxes.cpp")
     add_files("src/Typeset/Boxes/Graphics/grid_boxes.cpp")
+    -- render_visitor.cpp + boxes.cpp also moved to stem (RenderVisitor vtable/usage)
+    add_files("src/Typeset/Boxes/render_visitor.cpp")
+    add_files("src/Typeset/Boxes/Basic/boxes.cpp")
 
     -- install tm files for testing purpose
     if is_mode("releasedbg") then
