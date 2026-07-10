@@ -13,6 +13,9 @@
 name: Mogan Turbo Build (Windows)
 
 on:
+  push:
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       clear_cache:
