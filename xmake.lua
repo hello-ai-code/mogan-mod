@@ -956,7 +956,7 @@ target("stem") do
     if is_plat("windows") then
         set_optimize("smallest")
         set_runtimes("MT")
-        add_ldflags("/STACK:16777216", "/WHOLEARCHIVE:mogan.lib")
+        add_ldflags("/STACK:16777216")
     end
 
     if is_mode("debug", "releasedbg") and is_plat("windows") then
@@ -968,7 +968,7 @@ target("stem") do
     add_frameworks("QtGui", "QtWidgets", "QtCore", "QtPrintSupport", "QtSvg", "QtNetwork", "QtNetworkAuth")
     add_packages("s7")
     add_packages("lolly")
-    add_deps("libmogan")
+    add_deps("libmogan", {whole = true})
     if not is_plat("windows") then
         add_syslinks("pthread", "dl", "m")
     end
