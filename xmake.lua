@@ -956,7 +956,7 @@ target("stem") do
     if is_plat("windows") then
         set_optimize("smallest")
         set_runtimes("MT")
-        add_ldflags("/STACK:16777216")
+        add_ldflags("/STACK:16777216", "/WHOLEARCHIVE:mogan.lib")
     end
 
     if is_mode("debug", "releasedbg") and is_plat("windows") then
