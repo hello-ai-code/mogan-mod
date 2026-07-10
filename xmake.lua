@@ -958,7 +958,7 @@ target("stem") do
         set_runtimes("MT")
         add_ldflags("/STACK:16777216")
         set_policy("check.auto_ignore_flags", false)
-        add_ldflags("/WHOLEARCHIVE:$(buildir)/windows/x64/release/mogan.lib", {force = true})
+        add_ldflags("/WHOLEARCHIVE:mogan.lib", {force = true})
     end
 
     if is_mode("debug", "releasedbg") and is_plat("windows") then
