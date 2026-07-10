@@ -812,6 +812,19 @@ target("libmogan") do
             "$(projectdir)/TeXmacs/plugins/goldfish/src/**.cpp",
             "$(projectdir)/3rdparty/json-schema-validator/src/**.cpp"})
 
+    -- Box files with RenderVisitor::visit() are compiled directly into stem
+    -- to avoid MSVC static-lib partial-linking LNK2001 issues
+    remove_files("src/Typeset/Boxes/Basic/basic_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Basic/rubber_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Basic/text_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Composite/concat_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Composite/decoration_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Composite/misc_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Composite/stack_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Modifier/change_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Graphics/graphics_boxes.cpp")
+    remove_files("src/Typeset/Boxes/Graphics/grid_boxes.cpp")
+
     add_files("src/Plugins/Qt/**.cpp", "src/Plugins/Qt/**.hpp")
     add_files("src/Mogan/Cache/**.cpp", "src/Mogan/Cache/**.hpp")
     add_files("src/Mogan/TemplateCenter/**.cpp", "src/Mogan/TemplateCenter/**.hpp")
@@ -957,8 +970,6 @@ target("stem") do
         set_optimize("smallest")
         set_runtimes("MT")
         add_ldflags("/STACK:16777216")
-        set_policy("check.auto_ignore_flags", false)
-        add_ldflags("/WHOLEARCHIVE:mogan.lib", {force = true})
     end
 
     if is_mode("debug", "releasedbg") and is_plat("windows") then
@@ -980,6 +991,18 @@ target("stem") do
 
     add_includedirs(moe_includedirs)
     add_files("src/Mogan/Research/research.cpp")
+    -- Box files compiled directly into stem to avoid MSVC static-lib LNK2001
+    -- (these are removed from libmogan via remove_files)
+    add_files("src/Typeset/Boxes/Basic/basic_boxes.cpp")
+    add_files("src/Typeset/Boxes/Basic/rubber_boxes.cpp")
+    add_files("src/Typeset/Boxes/Basic/text_boxes.cpp")
+    add_files("src/Typeset/Boxes/Composite/concat_boxes.cpp")
+    add_files("src/Typeset/Boxes/Composite/decoration_boxes.cpp")
+    add_files("src/Typeset/Boxes/Composite/misc_boxes.cpp")
+    add_files("src/Typeset/Boxes/Composite/stack_boxes.cpp")
+    add_files("src/Typeset/Boxes/Modifier/change_boxes.cpp")
+    add_files("src/Typeset/Boxes/Graphics/graphics_boxes.cpp")
+    add_files("src/Typeset/Boxes/Graphics/grid_boxes.cpp")
 
     -- install tm files for testing purpose
     if is_mode("releasedbg") then
