@@ -16,14 +16,6 @@ on:
   push:
     branches:
       - master
-  workflow_dispatch:
-    inputs:
-      clear_cache:
-        description: 🗑️ 清除缓存
-        type: boolean
-        default: false
-  push:
-    branches: [ master ]
     paths:
       - 'src/**'
       - '!src/Plugins/Macos/**'
@@ -31,6 +23,12 @@ on:
       - 'xmake.lua'
       - 'xmake/packages.lua'
       - '.github/workflows/mogan-turbo-windows.yml'
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: 🗑️ 清除缓存
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-windows
