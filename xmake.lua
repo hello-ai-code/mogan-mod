@@ -828,6 +828,8 @@ target("libmogan") do
     remove_files("src/Typeset/Boxes/render_visitor.cpp")
     -- boxes.cpp (redraw() uses RenderVisitor) must also compile in stem
     remove_files("src/Typeset/Boxes/Basic/boxes.cpp")
+    -- Unity build file (compiled in stem to resolve LTCG vtable LNK2001)
+    remove_files("src/Typeset/Boxes/render_visitor_unity.cpp")
 
     add_files("src/Plugins/Qt/**.cpp", "src/Plugins/Qt/**.hpp")
     add_files("src/Mogan/Cache/**.cpp", "src/Mogan/Cache/**.hpp")
@@ -995,21 +997,9 @@ target("stem") do
 
     add_includedirs(moe_includedirs)
     add_files("src/Mogan/Research/research.cpp")
-    -- Box files compiled directly into stem to avoid MSVC static-lib LNK2001
-    -- (these are removed from libmogan via remove_files)
-    add_files("src/Typeset/Boxes/Basic/basic_boxes.cpp")
-    add_files("src/Typeset/Boxes/Basic/rubber_boxes.cpp")
-    add_files("src/Typeset/Boxes/Basic/text_boxes.cpp")
-    add_files("src/Typeset/Boxes/Composite/concat_boxes.cpp")
-    add_files("src/Typeset/Boxes/Composite/decoration_boxes.cpp")
-    add_files("src/Typeset/Boxes/Composite/misc_boxes.cpp")
-    add_files("src/Typeset/Boxes/Composite/stack_boxes.cpp")
-    add_files("src/Typeset/Boxes/Modifier/change_boxes.cpp")
-    add_files("src/Typeset/Boxes/Graphics/graphics_boxes.cpp")
-    add_files("src/Typeset/Boxes/Graphics/grid_boxes.cpp")
-    -- render_visitor.cpp + boxes.cpp also moved to stem (RenderVisitor vtable/usage)
-    add_files("src/Typeset/Boxes/render_visitor.cpp")
-    add_files("src/Typeset/Boxes/Basic/boxes.cpp")
+    -- Unity build: all box files + RenderVisitor compiled in a single .obj
+    -- to resolve MSVC LTCG cross-TU vtable references (LNK2001).
+    add_files("src/Typeset/Boxes/render_visitor_unity.cpp")
 
     -- install tm files for testing purpose
     if is_mode("releasedbg") then
