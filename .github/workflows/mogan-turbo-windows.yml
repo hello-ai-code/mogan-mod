@@ -208,7 +208,45 @@ jobs:
           compression-level: 1
 
       # ----------------------------------------------------------
-      # 13. 摘要
+      # 13. 发布到 GitHub Release
+      # ----------------------------------------------------------
+      - name: Generate release tag
+        shell: pwsh
+        run: |
+          $date = Get-Date -Format "yyyyMMdd"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          $tag = "build-$date-$sha"
+          echo "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ env.RELEASE_TAG }}"
+          gh release create $tag `
+            --repo ${{ github.repository }} `
+            --title "Mogan Build $tag" `
+            --notes "自动构建 #${{ github.run_number }}
+
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+
+          包含:
+          - mogan-turbo-windows-installer (.exe 安装包)
+          - mogan-turbo-windows-portable (ZIP 便携版)" `
+            --target ${{ github.sha }}
+
+          # 上传安装包
+          gh release upload $tag build/xpack/stem/*.exe --repo ${{ github.repository }}
+
+          # 上传便携版
+          gh release upload $tag mogan-turbo-portable.zip --repo ${{ github.repository }}
+
+          Write-Host "✅ Release $tag created and assets uploaded"
+
+      # ----------------------------------------------------------
+      # 14. 摘要
       # ----------------------------------------------------------
       - name: Summary
         run: |
