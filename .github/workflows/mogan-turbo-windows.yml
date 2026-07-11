@@ -34,6 +34,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-windows
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: 🪟 Windows
@@ -224,24 +227,44 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
-          gh release create $tag `
-            --repo ${{ github.repository }} `
-            --title "Mogan Build $tag" `
-            --notes "自动构建 #${{ github.run_number }}
+
+          # Write release notes to a temp file
+          $notes = @"
+          自动构建 #${{ github.run_number }}
 
           Commit: ${{ github.sha }}
           Branch: ${{ github.ref_name }}
 
           包含:
           - mogan-turbo-windows-installer (.exe 安装包)
-          - mogan-turbo-windows-portable (ZIP 便携版)" `
+          - mogan-turbo-windows-portable (ZIP 便携版)
+          "@
+          $notesFile = "${{ runner.temp }}\release-notes.md"
+          $notes | Out-File -FilePath $notesFile -Encoding utf8
+
+          # Create the release
+          gh release create $tag `
+            --repo ${{ github.repository }} `
+            --title "Mogan Build $tag" `
+            --notes-file $notesFile `
             --target ${{ github.sha }}
 
-          # 上传安装包
-          gh release upload $tag build/xpack/stem/*.exe --repo ${{ github.repository }}
+          # Upload installer (use Get-Item to expand glob)
+          $installer = Get-Item "build\xpack\stem\*.exe" | Select-Object -First 1
+          if ($installer) {
+            gh release upload $tag $installer.FullName --repo ${{ github.repository }}
+            Write-Host "✅ Installer uploaded: $($installer.Name)"
+          } else {
+            Write-Host "⚠️ Installer not found at build\xpack\stem\*.exe"
+          }
 
-          # 上传便携版
-          gh release upload $tag mogan-turbo-portable.zip --repo ${{ github.repository }}
+          # Upload portable ZIP
+          if (Test-Path "mogan-turbo-portable.zip") {
+            gh release upload $tag mogan-turbo-portable.zip --repo ${{ github.repository }}
+            Write-Host "✅ Portable ZIP uploaded"
+          } else {
+            Write-Host "⚠️ Portable ZIP not found"
+          }
 
           Write-Host "✅ Release $tag created and assets uploaded"
 
