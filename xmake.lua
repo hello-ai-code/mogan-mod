@@ -833,6 +833,10 @@ target("libmogan") do
     remove_files("src/Typeset/Boxes/Basic/boxes.cpp")
     -- Unity build file (compiled in stem to resolve LTCG vtable LNK2001)
     remove_files("src/Typeset/Boxes/render_visitor_unity.cpp")
+    -- edit_repaint.cpp and tm_button.cpp create visitor objects and must
+    -- also compile in stem (LTCG vtable references from static lib -> LNK2001)
+    remove_files("src/Edit/Interface/edit_repaint.cpp")
+    remove_files("src/Texmacs/Window/tm_button.cpp")
 
     add_files("src/Plugins/Qt/**.cpp", "src/Plugins/Qt/**.hpp")
     add_files("src/Mogan/Cache/**.cpp", "src/Mogan/Cache/**.hpp")

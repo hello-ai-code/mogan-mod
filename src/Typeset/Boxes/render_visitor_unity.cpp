@@ -36,3 +36,9 @@
 #include "Animate/animate_boxes.cpp"      /* anim, sound */
 #include "Graphics/graphics_boxes.cpp"    /* point, curve, spacial */
 #include "Graphics/grid_boxes.cpp"        /* grid */
+
+/* edit_repaint.cpp — draw_text() creates and passes RenderVisitor */
+#include "../../Edit/Interface/edit_repaint.cpp"
+
+/* tm_button.cpp — handle_repaint() creates and passes RenderVisitor */
+#include "../../Texmacs/Window/tm_button.cpp"
