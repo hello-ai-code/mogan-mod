@@ -24,9 +24,9 @@
 /* ── Constructor / Destructor ──────────────────────────────────────────── */
 
 memory_renderer_rep::memory_renderer_rep (int w2, int h2)
-  : basic_renderer_rep (false, w2, h2), w (w2), h (h2)
+  : basic_renderer_rep (false, w2, h2)
 {
-  pixels.resize (w * h);
+  pixels = array<unsigned int> (w * h);
   // fill with white
   for (int i = 0; i < w * h; i++)
     pixels[i] = 0xFFFFFFFFu;
@@ -49,7 +49,7 @@ memory_renderer_rep::set_pixel (int x, int y, unsigned int argb) {
 }
 
 void
-memory_renderer_rep::clear (unsigned int argb) {
+memory_renderer_rep::clear_all (unsigned int argb) {
   for (int i = 0; i < w * h; i++)
     pixels[i]= argb;
 }
@@ -63,7 +63,6 @@ memory_renderer_rep::clear (unsigned int argb) {
  * For our pixel buffer (Y-DOWN, origin at top-left), we compute:
  *   buf_x = (x + ox) / pixel      — left-to-right
  *   buf_y = (y + oy) / pixel      — Y-down, after adding back origin
-
  *
  * These are derived from the encode function:
  *   encode:  SI_x = pixel_x * pixel - ox
@@ -87,13 +86,8 @@ memory_renderer_rep::si_to_pixel (SI sx, SI sy, int& px, int& py) const {
 bool
 memory_renderer_rep::clip_rect (SI sx1, SI sy1, SI sx2, SI sy2,
                                 int& px1, int& py1, int& px2, int& py2) const {
-  // Clip against the renderer's visible region (cx1,cy1)-(cx2,cy2) in SI,
-  // then convert to pixel coords.
-  // After encode->set_clipping, the clip region is (cx1,cy1)-(cx2,cy2) in
-  // origin-adjusted SI space.  Mogan uses Y-DOWN, so cy1 < cy2 (cy1 = bottom
-  // of clip, cy2 = top of clip after the Y-flip in encode).
-
-  // Apply renderer-level clipping
+  // Apply renderer-level clipping against the clip region (cx1,cy1)-(cx2,cy2)
+  // in origin-adjusted SI space.  Mogan convention: cy1 <= cy2 (Y-down).
   if (sx1 < cx1 - ox) sx1 = cx1 - ox;
   if (sy1 < cy1 - oy) sy1 = cy1 - oy;
   if (sx2 > cx2 - ox) sx2 = cx2 - ox;
@@ -158,7 +152,7 @@ memory_renderer_rep::draw (int char_code, font_glyphs fng, SI x, SI y,
 
   // Top-left corner of glyph bitmap in SI, then convert to pixel
   SI gx_si = x + xo * shrinkf;
-  SI gy_si = y - yo * shrinkf;  // Mogan: yoff is subtracted (Y-DOWN: offset upward)
+  SI gy_si = y - yo * shrinkf;  // Mogan: yoff is subtracted (Y-DOWN)
   int gpx, gpy;
   if (!si_to_pixel (gx_si, gy_si, gpx, gpy)) return;
 

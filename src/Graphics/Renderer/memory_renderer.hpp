@@ -25,8 +25,8 @@
 class memory_renderer_rep : public basic_renderer_rep {
 public:
   /* ── Surface ──────────────────────────────────────────────────────────── */
-  int                     w, h;
   array<unsigned int>     pixels;   // ARGB (host byte order), w × h
+                                    // (w, h inherited from basic_renderer_rep)
 
 public:
   memory_renderer_rep (int w2, int h2);
@@ -35,7 +35,7 @@ public:
   /* pixel accessors (useful for tests / image export) */
   inline unsigned int  get_pixel (int x, int y) const;
   inline void          set_pixel (int x, int y, unsigned int argb);
-  void                 clear (unsigned int argb = 0xFF000000);  // opaque black
+  void                 clear_all (unsigned int argb = 0xFF000000);  // opaque black
 
   /* ── renderer_rep interface — required primitives ───────────────────── */
 
