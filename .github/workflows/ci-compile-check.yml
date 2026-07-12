@@ -40,12 +40,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set xmake global dir
+        run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
+
       - name: Cache xrepo packages
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}\.xmake-global\.xmake\packages
-          key: check-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua') }}
+            ${{ github.workspace }}\.xmake-global\packages
+          key: check-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua', 'xmake/packages.lua', 'xmake.lua') }}
           restore-keys: |
             check-${{ runner.os }}-${{ runner.arch }}-xrepo-
 

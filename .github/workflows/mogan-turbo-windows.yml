@@ -71,19 +71,25 @@ jobs:
         uses: actions/checkout@v4
 
       # ----------------------------------------------------------
-      # 4. 缓存
+      # 4. 设置 XMAKE_GLOBALDIR → workspace 内，缓存自包含
+      # ----------------------------------------------------------
+      - name: Set xmake global dir
+        run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
+
+      # ----------------------------------------------------------
+      # 5. 缓存 xrepo 包
       # ----------------------------------------------------------
       - name: Cache xrepo packages
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}\.xmake-global\.xmake\packages
-          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua') }}
+            ${{ github.workspace }}\.xmake-global\packages
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua', 'xmake/packages.lua', 'xmake.lua') }}
           restore-keys: |
             turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-
 
       # ----------------------------------------------------------
-      # 5. 配置 — 沿用官方 -m release，加上 turbo 选项
+      # 6. 配置 — 沿用官方 -m release，加上 turbo 选项
       # ----------------------------------------------------------
       - name: Configure
         run: |
