@@ -186,8 +186,8 @@ PreRenderVisitor::visit (concat_box_rep& box) {
   int n= N (box.bs);
   if (n == 0) return;
 
-  box.bg_boxes .resize (0);
-  box.bg_colors.resize (0);
+  box.bg_boxes->resize (0);
+  box.bg_colors->resize (0);
 
   int i= 0;
   while (i < n) {
@@ -291,8 +291,8 @@ PostRenderVisitor::visit (concat_box_rep& box) {
   for (int i= 0; i < n; i++) {
     box.bg_boxes[i]->set_bg_color (box.bg_colors[i]);
   }
-  box.bg_boxes .resize (0);
-  box.bg_colors.resize (0);
+  box.bg_boxes->resize (0);
+  box.bg_colors->resize (0);
 }
 
 concat_box_rep::concat_box_rep (path ip, array<box> bs2, array<SI> spc2,
