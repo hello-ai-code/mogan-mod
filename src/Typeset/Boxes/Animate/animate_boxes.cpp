@@ -43,6 +43,11 @@ struct anim_box_rep : public box_rep {
 };
 
 void
+anim_box_rep::accept (BoxVisitor& v) {
+  v.visit (*this);
+}
+
+void
 PreRenderVisitor::visit (anim_box_rep& box) {
   (void) box;
   animated_flag= true;
@@ -64,6 +69,11 @@ struct composite_anim_box_rep : public composite_box_rep {
   double anim_time () { return pl->get_elapsed () - delay; }
   void accept (BoxVisitor& v);
 };
+
+void
+composite_anim_box_rep::accept (BoxVisitor& v) {
+  v.visit (*this);
+}
 
 void
 PreRenderVisitor::visit (composite_anim_box_rep& box) {
