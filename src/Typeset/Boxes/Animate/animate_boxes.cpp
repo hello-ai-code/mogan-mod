@@ -424,7 +424,7 @@ PreRenderVisitor::visit (anim_effect_box_rep& box) {
   box.set_position (box.current_x);
   ren->get_clipping (box.old_clip_x1, box.old_clip_y1,
                      box.old_clip_x2, box.old_clip_y2);
-  box.set_clipping (*ren, box.current_x);
+  box.set_clipping (ren, box.current_x);
   box.last_x= box.current_x;
 }
 

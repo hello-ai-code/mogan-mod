@@ -96,21 +96,21 @@ void
 PreRenderVisitor::visit (highlight_box_rep& box) {
   box.old_bg = ren->get_background ();
   box.old_pen= ren->get_pencil ();
-  if (box.shape == "classic") box.display_classic (*ren);
-  else if (box.shape == "rounded") box.display_rounded (*ren, ROUNDED_NORMAL);
-  else if (box.shape == "angular") box.display_rounded (*ren, ROUNDED_ANGULAR);
-  else if (box.shape == "cartoon") box.display_rounded (*ren, ROUNDED_CARTOON);
+  if (box.shape == "classic") box.display_classic (ren);
+  else if (box.shape == "rounded") box.display_rounded (ren, ROUNDED_NORMAL);
+  else if (box.shape == "angular") box.display_rounded (ren, ROUNDED_ANGULAR);
+  else if (box.shape == "cartoon") box.display_rounded (ren, ROUNDED_CARTOON);
   else if (box.shape == "ring")
     ;
   else if (box.shape == "band")
     ;
-  else box.display_classic (*ren);
+  else box.display_classic (ren);
 }
 
 void
 PostRenderVisitor::visit (highlight_box_rep& box) {
-  if (box.shape == "ring") box.display_ring (*ren);
-  if (box.shape == "band") box.display_band (*ren);
+  if (box.shape == "ring") box.display_ring (ren);
+  if (box.shape == "band") box.display_band (ren);
   ren->set_background (box.old_bg);
   ren->set_pencil (box.old_pen);
 }

@@ -184,7 +184,7 @@ PreRenderVisitor::visit (art_box_rep& box) {
   box.old_pen= ren->get_pencil ();
   for (int i= 0; i < N (box.data); i++)
     if (box.data[0] == "text") break;
-    else box.display_one (*ren, box.data[i]);
+    else box.display_one (ren, box.data[i]);
 }
 
 void
@@ -193,7 +193,7 @@ PostRenderVisitor::visit (art_box_rep& box) {
   for (i= 0; i < N (box.data); i++)
     if (box.data[0] == "text") break;
   for (i++; i < N (box.data); i++)
-    box.display_one (*ren, box.data[i]);
+    box.display_one (ren, box.data[i]);
   ren->set_background (box.old_bg);
   ren->set_pencil (box.old_pen);
 }
