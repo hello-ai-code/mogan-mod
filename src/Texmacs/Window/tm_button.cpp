@@ -10,6 +10,8 @@
  ******************************************************************************/
 
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "boxes.hpp"
 #include "font.hpp"
 #include "message.hpp"
@@ -167,7 +169,12 @@ box_widget_rep::handle_repaint (renderer ren, SI x1, SI y1, SI x2, SI y2) {
   SI         x= ((((SI) (w / magf / display_scale)) - b->w ()) >> 1) - b->x1;
   SI         y= ((((SI) (h / magf / display_scale)) - b->h ()) >> 1) - b->y1 -
         ((SI) (h / magf / display_scale));
-  b->redraw (ren, path (), l, x, y);
+  {
+    PreRenderVisitor   prv (ren);
+    RenderVisitor      rv (ren);
+    PostRenderVisitor pstv (ren);
+    b->redraw (ren, path (), l, x, y, prv, rv, pstv);
+  }
   ren->reset_zoom_factor ();
 }
 

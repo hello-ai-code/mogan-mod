@@ -400,6 +400,9 @@ public:
   box  adjust_kerning (int mode, double factor);
   box  expand_glyphs (int mode, double factor);
   void redraw (renderer ren, path p, rectangles& l);
+  void redraw (renderer ren, path p, rectangles& l,
+               PreRenderVisitor& prv, RenderVisitor& rv,
+               PostRenderVisitor& pstv);
   void get_bracket_extents (SI& lo, SI& hi) {
     lo= y1;
     hi= y2;
@@ -471,6 +474,13 @@ effect_box_rep::redraw (renderer ren, path p, rectangles& l) {
     ren->draw_picture (result_pic, 0, 0);
   }
   ren->move_origin (-x0, -y0);
+}
+
+void
+effect_box_rep::redraw (renderer ren, path p, rectangles& l,
+                        PreRenderVisitor&, RenderVisitor&,
+                        PostRenderVisitor&) {
+  redraw (ren, p, l);
 }
 
 /******************************************************************************

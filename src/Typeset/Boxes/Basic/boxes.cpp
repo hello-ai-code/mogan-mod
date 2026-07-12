@@ -644,6 +644,16 @@ box_rep::reindex (int i, int item, int n) {
 
 void
 box_rep::redraw (renderer ren, path p, rectangles& l) {
+  PreRenderVisitor   prv (ren);
+  RenderVisitor      rv (ren);
+  PostRenderVisitor pstv (ren);
+  redraw (ren, p, l, prv, rv, pstv);
+}
+
+void
+box_rep::redraw (renderer ren, path p, rectangles& l,
+                 PreRenderVisitor& prv, RenderVisitor& rv,
+                 PostRenderVisitor& pstv) {
   if ((nr_painted & 15) == 15 && ren->is_screen && gui_interrupted (true))
     return;
   ren->move_origin (x0, y0);
@@ -651,18 +661,19 @@ box_rep::redraw (renderer ren, path p, rectangles& l) {
   if (ren->is_visible (x3 - delta, y3 - delta, x4 + delta, y4 + delta)) {
     rectangles ll;
     l= rectangles ();
-    { PreRenderVisitor prv (ren); accept (prv); }
+    accept (prv);
 
     int i, item= -1, n= subnr (), i1= n, i2= -1;
     if (!is_nil (p)) i1= i2= item= p->item;
     for (i= 0; i < n; i++) {
       int k= reindex (i, item, n - 1);
-      if (is_nil (p)) subbox (k)->redraw (ren, path (), ll);
+      if (is_nil (p)) subbox (k)->redraw (ren, path (), ll, prv, rv, pstv);
       else if (i != 0) {
-        if (k > item) subbox (k)->redraw (ren, path (0), ll);
-        else subbox (k)->redraw (ren, path (subbox (k)->subnr () - 1), ll);
+        if (k > item) subbox (k)->redraw (ren, path (0), ll, prv, rv, pstv);
+        else subbox (k)->redraw (ren, path (subbox (k)->subnr () - 1), ll,
+                                 prv, rv, pstv);
       }
-      else subbox (k)->redraw (ren, p->next, ll);
+      else subbox (k)->redraw (ren, p->next, ll, prv, rv, pstv);
       if (!is_nil (ll)) {
         i1= min (i1, k);
         i2= max (i2, k);
@@ -678,21 +689,31 @@ box_rep::redraw (renderer ren, path p, rectangles& l) {
     }
     else {
       l= rectangle (x3 + ren->ox, y3 + ren->oy, x4 + ren->ox, y4 + ren->oy);
-      { RenderVisitor rv (ren); accept (rv); }
+      accept (rv);
       if (!ren->is_screen) display_links (ren);
       if (nr_painted < 15) ren->apply_shadow (x1, y1, x2, y2);
       nr_painted++;
     }
 
-    { PostRenderVisitor prv (ren); accept (prv); }
+    accept (pstv);
   }
   ren->move_origin (-x0, -y0);
 }
 
 void
 box_rep::redraw (renderer ren, path p, rectangles& l, SI x, SI y) {
+  PreRenderVisitor   prv (ren);
+  RenderVisitor      rv (ren);
+  PostRenderVisitor pstv (ren);
+  redraw (ren, p, l, x, y, prv, rv, pstv);
+}
+
+void
+box_rep::redraw (renderer ren, path p, rectangles& l, SI x, SI y,
+                 PreRenderVisitor& prv, RenderVisitor& rv,
+                 PostRenderVisitor& pstv) {
   ren->move_origin (x, y);
-  redraw (ren, p, l);
+  redraw (ren, p, l, prv, rv, pstv);
   ren->move_origin (-x, -y);
 }
 
@@ -732,11 +753,17 @@ box_rep::accept (BoxVisitor& v) {
 
 void
 box_rep::redraw_background (renderer ren) {
+  BackgroundRenderVisitor brv (ren);
+  redraw_background (ren, brv);
+}
+
+void
+box_rep::redraw_background (renderer ren, BackgroundRenderVisitor& brv) {
   ren->move_origin (x0, y0);
-  { BackgroundRenderVisitor brv (ren); accept (brv); }
+  accept (brv);
   int i, n= subnr ();
   for (i= 0; i < n; i++)
-    subbox (i)->redraw_background (ren);
+    subbox (i)->redraw_background (ren, brv);
   ren->move_origin (-x0, -y0);
 }
 

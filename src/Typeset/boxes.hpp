@@ -26,6 +26,10 @@
 #include <memory>
 
 class BoxVisitor;
+class PreRenderVisitor;
+class RenderVisitor;
+class PostRenderVisitor;
+class BackgroundRenderVisitor;
 
 #define STD_BOX 0
 #define STACK_BOX 1
@@ -158,8 +162,15 @@ public:
 
   virtual int  reindex (int i, int item, int n);
   virtual void redraw (renderer ren, path p, rectangles& l);
+  virtual void redraw (renderer ren, path p, rectangles& l,
+                       PreRenderVisitor& prv, RenderVisitor& rv,
+                       PostRenderVisitor& pstv);
   virtual void redraw_background (renderer ren);
+  virtual void redraw_background (renderer ren, BackgroundRenderVisitor& brv);
   void         redraw (renderer ren, path p, rectangles& l, SI x, SI y);
+  void         redraw (renderer ren, path p, rectangles& l, SI x, SI y,
+                       PreRenderVisitor& prv, RenderVisitor& rv,
+                       PostRenderVisitor& pstv);
   void         clear (renderer ren, SI x1, SI y1, SI x2, SI y2);
 
   /*************************** positioning routines **************************/
