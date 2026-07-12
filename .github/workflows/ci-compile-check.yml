@@ -1,0 +1,59 @@
+# .github/workflows/ci-compile-check.yml
+# 轻量编译检查 — 仅编译 stem 目标，不做打包/安装/发布
+# 触发: push 到非 master 分支 + 手动
+# 预计耗时: ~10-15 min（缓存命中） / ~30-40 min（首次）
+
+name: Compile Check
+
+on:
+  push:
+    branches-ignore:
+      - master
+    paths:
+      - 'src/**'
+      - '!src/Plugins/Macos/**'
+      - '!src/Plugins/Unix/**'
+      - 'xmake.lua'
+      - 'xmake/packages.lua'
+      - '.github/workflows/ci-compile-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-windows
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: 🪟 Windows (stem)
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: v3.0.4
+
+      - name: Update repo
+        run: xrepo update-repo
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache xrepo packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+          key: check-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua') }}
+          restore-keys: |
+            check-${{ runner.os }}-${{ runner.arch }}-xrepo-
+
+      - name: Configure
+        run: xmake config --yes -vD -m releasedbg
+
+      - name: Build stem
+        run: xmake build -vD stem
+
+      - name: Summary
+        run: Write-Host "✅ Compile check passed for ${{ github.sha }}"
