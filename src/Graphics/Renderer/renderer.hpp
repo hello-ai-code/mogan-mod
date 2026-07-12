@@ -2,6 +2,58 @@
 /******************************************************************************
  * MODULE     : renderer.hpp
  * DESCRIPTION: Abstract graphical rendering primitives
+ *
+ * This file defines renderer_rep — the abstract interface for all rendering
+ * backends in Mogan.  Every concrete renderer (Qt, Memory, Skia, PDF, …)
+ * must implement the pure virtual methods below.
+ *
+ * ── Architecture ────────────────────────────────────────────────────────────
+ *
+ *   renderer_rep          (this file)    — abstract interface, no Qt types
+ *       ↑
+ *   basic_renderer_rep    (basic_renderer.hpp)  — common state/helpers
+ *       ↑
+ *   qt_renderer_rep       (src/Plugins/Qt/)     — Qt/QPainter backend
+ *   printer_rep           (printer.hpp)          — physical printer output
+ *   pdf_hummus_renderer   (Pdf plugin)           — PDF export
+ *
+ * 18 pure virtual methods form the "contract" that every backend must fulfil.
+ * All other virtual methods have a default (no-op or fallback) implementation
+ * in renderer.cpp or basic_renderer.cpp and may be overridden for performance.
+ *
+ * ── Method categories ──────────────────────────────────────────────────────
+ *
+ * ① REQUIRED (pure virtual = 0) — every backend MUST implement:
+ *    get_pencil, set_pencil, get_background, set_background,
+ *    draw (glyph), line, lines, clear, fill, arc, fill_arc, polygon,
+ *    fetch, new_shadow, delete_shadow, get_shadow, put_shadow, apply_shadow
+ *
+ * ② OPTIONAL (has default) — override for performance/capability:
+ *    is_started, get_handle, get_data_handle, get_brush, set_brush,
+ *    clear_pattern (2 overloads), draw_triangle, draw_spacial,
+ *    draw_rectangles, draw_selection, draw_curve, support_native_curve,
+ *    end_text, set_zoom_factor, set_transformation, reset_transformation,
+ *    get_clipping, set_clipping, decode, encode,
+ *    shadow (2 overloads), draw_picture, draw_scalable,
+ *    is_printer, get_extents, set_page_nr, next_page,
+ *    anchor, href, toc_entry, set_metadata
+ *
+ * ③ INHERITED from basic_renderer_rep (not in this file):
+ *    begin, end, set_brush (override), set_pencil (override),
+ *    several drawing defaults built on top of the pure-virtual primitives.
+ *
+ * ── Qt isolation ───────────────────────────────────────────────────────────
+ *
+ * qt_renderer_rep is the only subclass that depends on Qt headers.
+ * It lives entirely in src/Plugins/Qt/ and is conditionally compiled
+ * (#ifdef QTTEXMACS).  The abstract interface (this file) and the common
+ * base (basic_renderer.hpp) are Qt-free.
+ *
+ * When the shadow() or draw_picture() default implementations call
+ * native_picture() / picture_renderer(), those symbols have platform-
+ * specific definitions in src/Plugins/Qt/qt_picture.cpp (QTTEXMACS path)
+ * or fallback stubs in renderer.cpp (non-QTTEXMACS path).
+ *
  * COPYRIGHT  : (C) 1999  Joris van der Hoeven
  *******************************************************************************
  * This software falls under the GNU general public license version 3 or later.
