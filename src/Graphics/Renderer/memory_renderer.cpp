@@ -28,8 +28,9 @@ memory_renderer_rep::memory_renderer_rep (int w2, int h2)
 {
   pixels = array<unsigned int> (w * h);
   // fill with white
+  unsigned int* buf = A (pixels);
   for (int i = 0; i < w * h; i++)
-    pixels[i] = 0xFFFFFFFFu;
+    buf[i] = 0xFFFFFFFFu;
 }
 
 memory_renderer_rep::~memory_renderer_rep () {}
@@ -39,19 +40,22 @@ memory_renderer_rep::~memory_renderer_rep () {}
 inline unsigned int
 memory_renderer_rep::get_pixel (int x, int y) const {
   if (x < 0 || x >= w || y < 0 || y >= h) return 0;
-  return pixels[y * w + x];
+  const unsigned int* buf = A (pixels);
+  return buf[y * w + x];
 }
 
 inline void
 memory_renderer_rep::set_pixel (int x, int y, unsigned int argb) {
   if (x < 0 || x >= w || y < 0 || y >= h) return;
-  pixels[y * w + x]= argb;
+  unsigned int* buf = A (pixels);
+  buf[y * w + x]= argb;
 }
 
 void
 memory_renderer_rep::clear_all (unsigned int argb) {
+  unsigned int* buf = A (pixels);
   for (int i = 0; i < w * h; i++)
-    pixels[i]= argb;
+    buf[i]= argb;
 }
 
 /* ── Coordinate conversion ───────────────────────────────────────────────
@@ -159,6 +163,8 @@ memory_renderer_rep::draw (int char_code, font_glyphs fng, SI x, SI y,
   int nr_cols = shrinkf * shrinkf;
   if (nr_cols >= 64) nr_cols = 64;
 
+  unsigned int* buf = A (pixels);
+
   // Copy glyph bitmap to pixel buffer
   for (int j = 0; j < gh; j++) {
     for (int i = 0; i < gw; i++) {
@@ -171,7 +177,7 @@ memory_renderer_rep::draw (int char_code, font_glyphs fng, SI x, SI y,
 
       // Alpha blend glyph over existing pixel
       unsigned int src = fg_argb;
-      unsigned int dst = pixels[py * w + px];
+      unsigned int dst = buf[py * w + px];
       int alpha = (coverage * ((src >> 24) & 0xFF)) / nr_cols;
       if (alpha == 0) continue;
 
@@ -184,7 +190,7 @@ memory_renderer_rep::draw (int char_code, font_glyphs fng, SI x, SI y,
       int sb = ((src      ) & 0xFF) * alpha / 255;
       int a_out = alpha + ((dst >> 24) & 0xFF) * inv_a / 255;
 
-      pixels[py * w + px] =
+      buf[py * w + px] =
         ((unsigned int)(a_out) << 24) |
         ((unsigned int)(dr + sr) << 16) |
         ((unsigned int)(dg + sg) <<  8) |
@@ -232,9 +238,10 @@ memory_renderer_rep::clear (SI x1, SI y1, SI x2, SI y2) {
   if (!clip_rect (x1, y1, x2, y2, px1, py1, px2, py2)) return;
 
   unsigned int bg = color_to_argb (bg_brush->get_color ());
+  unsigned int* buf = A (pixels);
   for (int py = py1; py < py2; py++)
     for (int px = px1; px < px2; px++)
-      pixels[py * w + px] = bg;
+      buf[py * w + px] = bg;
 }
 
 void
@@ -243,9 +250,10 @@ memory_renderer_rep::fill (SI x1, SI y1, SI x2, SI y2) {
   if (!clip_rect (x1, y1, x2, y2, px1, py1, px2, py2)) return;
 
   unsigned int fg = color_to_argb (pen->get_color ());
+  unsigned int* buf = A (pixels);
   for (int py = py1; py < py2; py++)
     for (int px = px1; px < px2; px++)
-      pixels[py * w + px] = fg;
+      buf[py * w + px] = fg;
 }
 
 /* ── Arc / fill_arc (polygon approximation) ────────────────────────────── */
@@ -282,6 +290,7 @@ memory_renderer_rep::polygon (array<SI> xs, array<SI> ys, bool convex) {
   }
 
   unsigned int fg = color_to_argb (pen->get_color ());
+  unsigned int* buf = A (pixels);
 
   // Find vertical bounds
   int ymin = py[0], ymax = py[0];
@@ -324,7 +333,7 @@ memory_renderer_rep::polygon (array<SI> xs, array<SI> ys, bool convex) {
       if (xa < 0) xa = 0;
       if (xb > w) xb = w;
       for (int x = xa; x < xb; x++)
-        pixels[y * w + x] = fg;
+        buf[y * w + x] = fg;
     }
   }
 }
