@@ -13,6 +13,7 @@
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "analyze.hpp"
 #include "effect.hpp"
 #include "gui.hpp"
@@ -345,8 +346,6 @@ struct transformed_box_rep : public change_box_rep {
 public:
   transformed_box_rep (path ip, box b, frame fr);
   operator tree () { return tree (TUPLE, "transform", (tree) bs[0]); }
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   // cursor find_cursor (path bp);
   // selection find_selection (path lbp, path rbp);
   void get_bracket_extents (SI& lo, SI& hi) {
@@ -378,12 +377,12 @@ transformed_box_rep::transformed_box_rep (path ip, box b, frame fr2)
 }
 
 void
-transformed_box_rep::pre_display (renderer& ren) {
-  ren->set_transformation (fr);
+PreRenderVisitor::visit (transformed_box_rep& box) {
+  ren->set_transformation (box.fr);
 }
 
 void
-transformed_box_rep::post_display (renderer& ren) {
+PostRenderVisitor::visit (transformed_box_rep& box) {
   ren->reset_transformation ();
 }
 
@@ -495,8 +494,6 @@ public:
     else if (in == "scroll-y") return yt;
     else return box_rep::get_info (in);
   }
-  void      pre_display (renderer& ren);
-  void      post_display (renderer& ren);
   selection find_selection (path lbp, path rbp);
   void      get_bracket_extents (SI& lo, SI& hi) {
     lo= y1;
@@ -523,14 +520,16 @@ clip_box_rep::clip_box_rep (path ip, box b, SI X1, SI Y1, SI X2, SI Y2,
 }
 
 void
-clip_box_rep::pre_display (renderer& ren) {
-  ren->get_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2);
-  ren->extra_clipping (x1, y1, x2, y2);
+PreRenderVisitor::visit (clip_box_rep& box) {
+  ren->get_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2);
+  ren->extra_clipping (box.x1, box.y1, box.x2, box.y2);
 }
 
 void
-clip_box_rep::post_display (renderer& ren) {
-  ren->set_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2, true);
+PostRenderVisitor::visit (clip_box_rep& box) {
+  ren->set_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2, true);
 }
 
 selection
@@ -625,8 +624,6 @@ struct cell_box_rep : public change_box_rep {
   box  expand_glyphs (int mode, double factor);
   void get_cell_extents (SI& l, SI& r);
   box  adjust_cell_geometry (SI dx, SI dl, SI dr);
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void accept (BoxVisitor& v);
 };
 
@@ -688,8 +685,8 @@ cell_box_rep::adjust_cell_geometry (SI dx, SI dl, SI dr) {
 }
 
 void
-cell_box_rep::pre_display (renderer& ren) {
-  SI l= bl, r= br, b= bb, t= bt, d= db, a= ab;
+PreRenderVisitor::visit (cell_box_rep& box) {
+  SI l= box.bl, r= box.br, b= box.bb, t= box.bt, d= box.db, a= box.ab;
   SI lx1, rx1, by1, ty1;
   SI lx2, rx2, by2, ty2;
   if (ren->is_screen) { // correction for screen display only
@@ -702,23 +699,23 @@ cell_box_rep::pre_display (renderer& ren) {
     a       = ((a + (pixel - 1)) / pixel) * pixel;
   }
 
-  lx1= x1 - (l >> 1);
+  lx1= box.x1 - (l >> 1);
   lx2= lx1 + l;
-  by1= y1 - (b >> 1);
+  by1= box.y1 - (b >> 1);
   by2= by1 + b;
-  rx2= x2 + (r >> 1);
+  rx2= box.x2 + (r >> 1);
   rx1= rx2 - r;
-  ty2= y2 + (t >> 1);
+  ty2= box.y2 + (t >> 1);
   ty1= ty2 - t;
 
-  if (bg->get_type () != brush_none) {
-    old_bg= ren->get_background ();
-    ren->set_background (bg);
+  if (box.bg->get_type () != brush_none) {
+    box.old_bg= ren->get_background ();
+    ren->set_background (box.bg);
     ren->clear_pattern (lx2, by2, rx1, ty1);
   }
 
   if ((l > 0) || (r > 0) || (b > 0) || (t > 0)) {
-    ren->set_pencil (fg);
+    ren->set_pencil (box.fg);
     ren->fill (lx1, by1, lx2, ty2);
     ren->fill (rx1, by1, rx2, ty2);
     ren->fill (lx1, by1, rx2, by2);
@@ -726,13 +723,13 @@ cell_box_rep::pre_display (renderer& ren) {
   }
 
   if (d > 0) {
-    ren->set_pencil (fg);
+    ren->set_pencil (box.fg);
     SI dx= d >> 1;
     if (dx < PIXEL) dx= PIXEL;
-    SI        x1d= x1 + dx;
-    SI        y1d= y2 - dx;
-    SI        x2d= x2 - dx;
-    SI        y2d= y1 + dx;
+    SI        x1d= box.x1 + dx;
+    SI        y1d= box.y2 - dx;
+    SI        x2d= box.x2 - dx;
+    SI        y2d= box.y1 + dx;
     array<SI> px (4);
     array<SI> py (4);
     px[0]= x1d - dx;
@@ -747,13 +744,13 @@ cell_box_rep::pre_display (renderer& ren) {
   }
 
   if (a > 0) {
-    ren->set_pencil (fg);
+    ren->set_pencil (box.fg);
     SI dx= a >> 1;
     if (dx < PIXEL) dx= PIXEL;
-    SI        x1a= x2 - dx;
-    SI        y1a= y2 - dx;
-    SI        x2a= x1 + dx;
-    SI        y2a= y1 + dx;
+    SI        x1a= box.x2 - dx;
+    SI        y1a= box.y2 - dx;
+    SI        x2a= box.x1 + dx;
+    SI        y2a= box.y1 + dx;
     array<SI> px (4);
     array<SI> py (4);
     px[0]= x1a - dx;
@@ -769,8 +766,8 @@ cell_box_rep::pre_display (renderer& ren) {
 }
 
 void
-cell_box_rep::post_display (renderer& ren) {
-  if (bg->get_type () != brush_none) ren->set_background (old_bg);
+PostRenderVisitor::visit (cell_box_rep& box) {
+  if (box.bg->get_type () != brush_none) ren->set_background (box.old_bg);
 }
 
 /******************************************************************************
@@ -845,7 +842,6 @@ struct locus_box_rep : public change_box_rep {
   box  adjust_kerning (int mode, double factor);
   box  expand_glyphs (int mode, double factor);
   void loci (SI x, SI y, SI delta, list<string>& ids2, rectangles& rs);
-  void post_display (renderer& ren);
   void accept (BoxVisitor& v);
 };
 
@@ -894,9 +890,9 @@ locus_box_rep::loci (SI x, SI y, SI delta, list<string>& l, rectangles& rs) {
 }
 
 void
-locus_box_rep::post_display (renderer& ren) {
-  if (ref != "") ren->href (ref, x1, y1, x2, y2);
-  if (anchor != "") ren->anchor (anchor, x1, y1, x2, y2);
+PostRenderVisitor::visit (locus_box_rep& box) {
+  if (box.ref != "") ren->href (box.ref, box.x1, box.y1, box.x2, box.y2);
+  if (box.anchor != "") ren->anchor (box.anchor, box.x1, box.y1, box.x2, box.y2);
 }
 
 /******************************************************************************

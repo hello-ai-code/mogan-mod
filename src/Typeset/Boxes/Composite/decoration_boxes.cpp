@@ -13,6 +13,7 @@
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "observers.hpp"
 #include "scheme.hpp"
 
@@ -99,8 +100,6 @@ struct flag_box_rep : public composite_box_rep {
   brush old_bg;
   flag_box_rep (path ip, box b, SI h, pencil dark, brush light);
   operator tree () { return tree (TUPLE, "flag"); }
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void accept (BoxVisitor& v);
 };
 
@@ -109,14 +108,14 @@ flag_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
 
 
 void
-flag_box_rep::pre_display (renderer& ren) {
-  old_bg= ren->get_background ();
-  ren->set_background (light);
+PreRenderVisitor::visit (flag_box_rep& box) {
+  box.old_bg= ren->get_background ();
+  ren->set_background (box.light);
 }
 
 void
-flag_box_rep::post_display (renderer& ren) {
-  ren->set_background (old_bg);
+PostRenderVisitor::visit (flag_box_rep& box) {
+  ren->set_background (box.old_bg);
 }
 
 flag_box_rep::flag_box_rep (path ip, box b, SI h, pencil dark, brush light2)

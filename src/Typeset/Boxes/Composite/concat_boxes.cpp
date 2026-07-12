@@ -11,6 +11,7 @@
 
 #include "Boxes/box_visitor.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "colors.hpp"
@@ -29,8 +30,6 @@ struct concat_box_rep : public composite_box_rep {
   box adjust_kerning (int mode, double factor);
   box expand_glyphs (int mode, double factor);
 
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void finalize ();
   void clear_incomplete (rectangles& rs, SI pixel, int i, int i1, int i2);
   bool access_allowed ();
@@ -183,16 +182,16 @@ clear_deep_bg (box b, array<box>& boxes, array<color>& colors) {
 }
 
 void
-concat_box_rep::pre_display (renderer& ren) {
-  int n= N (bs);
+PreRenderVisitor::visit (concat_box_rep& box) {
+  int n= N (box.bs);
   if (n == 0) return;
 
-  bg_boxes = array<box> ();
-  bg_colors= array<color> ();
+  box.bg_boxes = array<box> ();
+  box.bg_colors= array<color> ();
 
   int i= 0;
   while (i < n) {
-    color c= get_deep_bg_color (bs[i]);
+    color c= get_deep_bg_color (box.bs[i]);
     int   r, g, b, a;
     get_rgb_color (c, r, g, b, a);
     if (a <= 0) {
@@ -204,7 +203,7 @@ concat_box_rep::pre_display (renderer& ren) {
     i++;
 
     while (i < n) {
-      color c2= get_deep_bg_color (bs[i]);
+      color c2= get_deep_bg_color (box.bs[i]);
       int   r2, g2, b2, a2;
       get_rgb_color (c2, r2, g2, b2, a2);
       if (a2 <= 0 || c2 != group_color) break;
@@ -218,32 +217,32 @@ concat_box_rep::pre_display (renderer& ren) {
     // BIG_OP_BOX type and never sets bg_color on the inner text_box, so
     // get_deep_bg_color returns transparent; without this extension the
     // highlight rectangle would break around the operator.
-    while (start > 0 && bs[start - 1]->get_type () == BIG_OP_BOX) {
+    while (start > 0 && box.bs[start - 1]->get_type () == BIG_OP_BOX) {
       start--;
     }
-    while (end + 1 < n && bs[end + 1]->get_type () == BIG_OP_BOX) {
+    while (end + 1 < n && box.bs[end + 1]->get_type () == BIG_OP_BOX) {
       end++;
     }
 
-    SI bg_x1= sx1 (start);
-    SI bg_x2= sx2 (end);
+    SI bg_x1= box.sx1 (start);
+    SI bg_x2= box.sx2 (end);
     SI pixel= ren->pixel;
     SI bg_y1= MAX_SI;
     SI bg_y2= -MAX_SI;
 
     for (int k= start; k <= end; k++) {
-      if (bs[k]->get_type () == TEXT_BOX) {
-        font f= bs[k]->get_leaf_font ();
+      if (box.bs[k]->get_type () == TEXT_BOX) {
+        font f= box.bs[k]->get_leaf_font ();
         if (!is_nil (f)) {
           metric ex_m;
           f->get_extents ("M", ex_m);
-          bg_y1= min (bg_y1, sy (k) + ex_m->y1 - 10 * pixel);
-          bg_y2= max (bg_y2, sy (k) + ex_m->y2 + 10 * pixel);
+          bg_y1= min (bg_y1, box.sy (k) + ex_m->y1 - 10 * pixel);
+          bg_y2= max (bg_y2, box.sy (k) + ex_m->y2 + 10 * pixel);
         }
       }
       else {
-        bg_y1= min (bg_y1, sy1 (k));
-        bg_y2= max (bg_y2, sy2 (k));
+        bg_y1= min (bg_y1, box.sy1 (k));
+        bg_y2= max (bg_y2, box.sy2 (k));
       }
     }
 
@@ -251,8 +250,8 @@ concat_box_rep::pre_display (renderer& ren) {
 
     font first_font;
     for (int k= start; k <= end; k++) {
-      if (bs[k]->get_type () == TEXT_BOX) {
-        first_font= bs[k]->get_leaf_font ();
+      if (box.bs[k]->get_type () == TEXT_BOX) {
+        first_font= box.bs[k]->get_leaf_font ();
         if (!is_nil (first_font)) break;
       }
     }
@@ -280,20 +279,20 @@ concat_box_rep::pre_display (renderer& ren) {
     }
 
     for (int k= start; k <= end; k++) {
-      clear_deep_bg (bs[k], bg_boxes, bg_colors);
+      clear_deep_bg (box.bs[k], box.bg_boxes, box.bg_colors);
     }
   }
 }
 
 void
-concat_box_rep::post_display (renderer& ren) {
-  (void) ren;
-  int n= N (bg_boxes);
+PostRenderVisitor::visit (concat_box_rep& box) {
+  (void) box;
+  int n= N (box.bg_boxes);
   for (int i= 0; i < n; i++) {
-    bg_boxes[i]->set_bg_color (bg_colors[i]);
+    box.bg_boxes[i]->set_bg_color (box.bg_colors[i]);
   }
-  bg_boxes = array<box> ();
-  bg_colors= array<color> ();
+  box.bg_boxes = array<box> ();
+  box.bg_colors= array<color> ();
 }
 
 concat_box_rep::concat_box_rep (path ip, array<box> bs2, array<SI> spc2,

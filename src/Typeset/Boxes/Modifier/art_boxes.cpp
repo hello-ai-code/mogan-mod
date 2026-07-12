@@ -12,6 +12,7 @@
 #include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "analyze.hpp"
 #include "converter.hpp"
 #include "effect.hpp"
@@ -38,8 +39,6 @@ struct art_box_rep : public composite_box_rep {
   void get_image_extents (tree prg, SI& xl, SI& xr, SI& yb, SI& yt);
   void display_image (renderer r, url u, tree e, SI xl, SI yb, SI xr, SI yt);
   void display_one (renderer ren, tree prg);
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void accept (BoxVisitor& v);
 };
 
@@ -180,23 +179,23 @@ art_box_rep::display_one (renderer ren, tree prg) {
 }
 
 void
-art_box_rep::pre_display (renderer& ren) {
-  old_bg = ren->get_background ();
-  old_pen= ren->get_pencil ();
-  for (int i= 0; i < N (data); i++)
-    if (data[0] == "text") break;
-    else display_one (ren, data[i]);
+PreRenderVisitor::visit (art_box_rep& box) {
+  box.old_bg = ren->get_background ();
+  box.old_pen= ren->get_pencil ();
+  for (int i= 0; i < N (box.data); i++)
+    if (box.data[0] == "text") break;
+    else box.display_one (*ren, box.data[i]);
 }
 
 void
-art_box_rep::post_display (renderer& ren) {
+PostRenderVisitor::visit (art_box_rep& box) {
   int i;
-  for (i= 0; i < N (data); i++)
-    if (data[0] == "text") break;
-  for (i++; i < N (data); i++)
-    display_one (ren, data[i]);
-  ren->set_background (old_bg);
-  ren->set_pencil (old_pen);
+  for (i= 0; i < N (box.data); i++)
+    if (box.data[0] == "text") break;
+  for (i++; i < N (box.data); i++)
+    box.display_one (*ren, box.data[i]);
+  ren->set_background (box.old_bg);
+  ren->set_pencil (box.old_pen);
 }
 
 /******************************************************************************

@@ -12,6 +12,7 @@
 #include "Boxes/box_visitor.hpp"
 #include "Boxes/change.hpp"
 #include "Boxes/construct.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "analyze.hpp"
 #include "effect.hpp"
 #include "gui.hpp"
@@ -37,8 +38,6 @@ struct highlight_box_rep : public change_box_rep {
   pencil       old_pen;
   highlight_box_rep (path ip, box b, box xb, ornament_parameters ps);
   operator tree () { return tree (TUPLE, "highlight", (tree) bs[0]); }
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void display_classic (renderer& ren);
   void display_ring (renderer& ren);
   void display_band (renderer& ren);
@@ -94,26 +93,26 @@ highlight_box_rep::highlight_box_rep (path ip, box b, box xb,
 }
 
 void
-highlight_box_rep::pre_display (renderer& ren) {
-  old_bg = ren->get_background ();
-  old_pen= ren->get_pencil ();
-  if (shape == "classic") display_classic (ren);
-  else if (shape == "rounded") display_rounded (ren, ROUNDED_NORMAL);
-  else if (shape == "angular") display_rounded (ren, ROUNDED_ANGULAR);
-  else if (shape == "cartoon") display_rounded (ren, ROUNDED_CARTOON);
-  else if (shape == "ring")
+PreRenderVisitor::visit (highlight_box_rep& box) {
+  box.old_bg = ren->get_background ();
+  box.old_pen= ren->get_pencil ();
+  if (box.shape == "classic") box.display_classic (*ren);
+  else if (box.shape == "rounded") box.display_rounded (*ren, ROUNDED_NORMAL);
+  else if (box.shape == "angular") box.display_rounded (*ren, ROUNDED_ANGULAR);
+  else if (box.shape == "cartoon") box.display_rounded (*ren, ROUNDED_CARTOON);
+  else if (box.shape == "ring")
     ;
-  else if (shape == "band")
+  else if (box.shape == "band")
     ;
-  else display_classic (ren);
+  else box.display_classic (*ren);
 }
 
 void
-highlight_box_rep::post_display (renderer& ren) {
-  if (shape == "ring") display_ring (ren);
-  if (shape == "band") display_band (ren);
-  ren->set_background (old_bg);
-  ren->set_pencil (old_pen);
+PostRenderVisitor::visit (highlight_box_rep& box) {
+  if (box.shape == "ring") box.display_ring (*ren);
+  if (box.shape == "band") box.display_band (*ren);
+  ren->set_background (box.old_bg);
+  ren->set_pencil (box.old_pen);
 }
 
 /******************************************************************************

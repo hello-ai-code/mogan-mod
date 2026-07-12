@@ -14,6 +14,7 @@
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "colors.hpp"
 
 /******************************************************************************
@@ -31,8 +32,6 @@ struct scatter_box_rep : composite_box_rep {
   path      find_left_box_path ();
   path      find_right_box_path ();
   selection find_selection (path lbp, path rbp);
-  void      pre_display (renderer& ren);
-  void      display_background (renderer ren);
   void accept (BoxVisitor& v);
 };
 
@@ -105,16 +104,25 @@ scatter_box_rep::find_selection (path lbp, path rbp) {
 }
 
 void
-scatter_box_rep::pre_display (renderer& ren) {
-  display_background (ren);
+PreRenderVisitor::visit (scatter_box_rep& box) {
+  if (is_nil (box.rs)) return;
+  brush bgc= ren->get_background ();
+  ren->set_background (tm_background);
+  rectangles rects= box.rs;
+  while (!is_nil (rects)) {
+    rectangle r= rects->item;
+    ren->clear_pattern (r->x1, r->y1, r->x2, r->y2);
+    rects= rects->next;
+  }
+  ren->set_background (bgc);
 }
 
 void
-scatter_box_rep::display_background (renderer ren) {
-  if (is_nil (rs)) return;
+BackgroundRenderVisitor::visit (scatter_box_rep& box) {
+  if (is_nil (box.rs)) return;
   brush bgc= ren->get_background ();
   ren->set_background (tm_background);
-  rectangles rects= rs;
+  rectangles rects= box.rs;
   while (!is_nil (rects)) {
     rectangle r= rects->item;
     ren->clear_pattern (r->x1, r->y1, r->x2, r->y2);
@@ -138,10 +146,7 @@ struct page_box_rep : composite_box_rep {
                 array<box> bs, array<SI> x, array<SI> y, box dec);
   operator tree ();
   int  find_child (SI x, SI y, SI delta, bool force);
-  void display_background (renderer ren);
   void redraw_background (renderer ren);
-  void pre_display (renderer& ren);
-  void post_display (renderer& ren);
   void clear_incomplete (rectangles& rs, SI pixel, int i, int i1, int i2);
   void collect_page_numbers (hashmap<string, tree>& h, tree page);
   void collect_page_colors (array<brush>& bs, array<rectangle>& rs);
@@ -198,7 +203,8 @@ page_box_rep::find_child (SI x, SI y, SI delta, bool force) {
 }
 
 void
-page_box_rep::display_background (renderer ren) {
+page_box_rep::redraw_background (renderer ren) {
+  ren->move_origin (x0, y0);
   if (page_bgc->get_type () != brush_none) {
     brush bgc= ren->get_background ();
     ren->set_background (page_bgc);
@@ -206,25 +212,36 @@ page_box_rep::display_background (renderer ren) {
     ren->set_background (bgc);
   }
   else ren->clear_pattern (x1, y1, x2, y2);
-}
-
-void
-page_box_rep::redraw_background (renderer ren) {
-  ren->move_origin (x0, y0);
-  display_background (ren);
   ren->move_origin (-x0, -y0);
 }
 
 void
-page_box_rep::pre_display (renderer& ren) {
-  display_background (ren);
-  old_page= ren->cur_page;
-  ren->set_page_nr (page_nr);
+PreRenderVisitor::visit (page_box_rep& box) {
+  if (box.page_bgc->get_type () != brush_none) {
+    brush bgc= ren->get_background ();
+    ren->set_background (box.page_bgc);
+    ren->clear_pattern (box.x1, box.y1, box.x2, box.y2);
+    ren->set_background (bgc);
+  }
+  else ren->clear_pattern (box.x1, box.y1, box.x2, box.y2);
+  box.old_page= ren->cur_page;
+  ren->set_page_nr (box.page_nr);
 }
 
 void
-page_box_rep::post_display (renderer& ren) {
-  ren->set_page_nr (old_page);
+PostRenderVisitor::visit (page_box_rep& box) {
+  ren->set_page_nr (box.old_page);
+}
+
+void
+BackgroundRenderVisitor::visit (page_box_rep& box) {
+  if (box.page_bgc->get_type () != brush_none) {
+    brush bgc= ren->get_background ();
+    ren->set_background (box.page_bgc);
+    ren->clear_pattern (box.x1, box.y1, box.x2, box.y2);
+    ren->set_background (bgc);
+  }
+  else ren->clear_pattern (box.x1, box.y1, box.x2, box.y2);
 }
 
 void
@@ -293,8 +310,6 @@ struct page_border_box_rep : change_box_rep {
   page_border_box_rep (path ip, box pb, color tmb, SI l, SI r, SI b, SI t,
                        SI pixel);
   operator tree ();
-  void pre_display (renderer& ren);
-  void display_background (renderer ren);
   void accept (BoxVisitor& v);
 };
 
@@ -323,11 +338,6 @@ page_border_box_rep::operator tree () {
   return tree (TUPLE, "bordered", (tree) bs[0]);
 }
 
-void
-page_border_box_rep::pre_display (renderer& ren) {
-  display_background (ren);
-}
-
 static void
 set_shadow (renderer ren, color bg, SI alpha) {
   color c= rgb_color (0, 0, 0, alpha);
@@ -336,37 +346,75 @@ set_shadow (renderer ren, color bg, SI alpha) {
 }
 
 void
-page_border_box_rep::display_background (renderer ren) {
+PreRenderVisitor::visit (page_border_box_rep& box) {
   if (!ren->is_screen) return;
   brush bgc= ren->get_background ();
-  ren->set_background (tmb);
-  SI X1= sx1 (0), Y1= sy1 (0), X2= sx2 (0), Y2= sy2 (0);
-  if (X1 > x1) ren->clear_pattern (x1, y1, X1, y2);
-  if (x2 > X2) ren->clear_pattern (X2, y1, x2, y2);
-  if (Y1 > y1) ren->clear_pattern (X1, y1, X2, Y1);
-  if (y2 > Y2) ren->clear_pattern (X1, Y2, X2, y2);
+  ren->set_background (box.tmb);
+  SI X1= box.sx1 (0), Y1= box.sy1 (0), X2= box.sx2 (0), Y2= box.sy2 (0);
+  if (X1 > box.x1) ren->clear_pattern (box.x1, box.y1, X1, box.y2);
+  if (box.x2 > X2) ren->clear_pattern (X2, box.y1, box.x2, box.y2);
+  if (Y1 > box.y1) ren->clear_pattern (X1, box.y1, X2, Y1);
+  if (box.y2 > Y2) ren->clear_pattern (X1, Y2, X2, box.y2);
 
   SI p= ren->pixel;
-  if (X1 > x1 + 2 * p) {
-    set_shadow (ren, tmb, 128);
+  if (X1 > box.x1 + 2 * p) {
+    set_shadow (ren, box.tmb, 128);
     ren->clear_pattern (X1 - p, Y1 - p, X1, Y2 - p);
-    set_shadow (ren, tmb, 16);
+    set_shadow (ren, box.tmb, 16);
     ren->clear_pattern (X1 - 2 * p, Y1 - p, X1 - p, Y2 - 2 * p);
   }
-  if (x2 - 2 * p > X2) {
-    set_shadow (ren, tmb, 16);
+  if (box.x2 - 2 * p > X2) {
+    set_shadow (ren, box.tmb, 16);
     ren->clear_pattern (X2 + p, Y1, X2 + 2 * p, Y2 - 2 * p);
-    set_shadow (ren, tmb, 128);
+    set_shadow (ren, box.tmb, 128);
     ren->clear_pattern (X2, Y1, X2 + p, Y2 - p);
   }
-  if (Y1 > y1 - 4 * p) {
-    set_shadow (ren, tmb, 160);
+  if (Y1 > box.y1 - 4 * p) {
+    set_shadow (ren, box.tmb, 160);
     ren->clear_pattern (X1, Y1 - p, X2, Y1);
-    set_shadow (ren, tmb, 128);
+    set_shadow (ren, box.tmb, 128);
     ren->clear_pattern (X1 - p, Y1 - 2 * p, X2 + p, Y1 - p);
-    set_shadow (ren, tmb, 64);
+    set_shadow (ren, box.tmb, 64);
     ren->clear_pattern (X1 - p, Y1 - 3 * p, X2 + p, Y1 - 2 * p);
-    set_shadow (ren, tmb, 16);
+    set_shadow (ren, box.tmb, 16);
+    ren->clear_pattern (X1 - p, Y1 - 4 * p, X2 + p, Y1 - 3 * p);
+  }
+
+  ren->set_background (bgc);
+}
+
+void
+BackgroundRenderVisitor::visit (page_border_box_rep& box) {
+  if (!ren->is_screen) return;
+  brush bgc= ren->get_background ();
+  ren->set_background (box.tmb);
+  SI X1= box.sx1 (0), Y1= box.sy1 (0), X2= box.sx2 (0), Y2= box.sy2 (0);
+  if (X1 > box.x1) ren->clear_pattern (box.x1, box.y1, X1, box.y2);
+  if (box.x2 > X2) ren->clear_pattern (X2, box.y1, box.x2, box.y2);
+  if (Y1 > box.y1) ren->clear_pattern (X1, box.y1, X2, Y1);
+  if (box.y2 > Y2) ren->clear_pattern (X1, Y2, X2, box.y2);
+
+  SI p= ren->pixel;
+  if (X1 > box.x1 + 2 * p) {
+    set_shadow (ren, box.tmb, 128);
+    ren->clear_pattern (X1 - p, Y1 - p, X1, Y2 - p);
+    set_shadow (ren, box.tmb, 16);
+    ren->clear_pattern (X1 - 2 * p, Y1 - p, X1 - p, Y2 - 2 * p);
+  }
+  if (box.x2 - 2 * p > X2) {
+    set_shadow (ren, box.tmb, 16);
+    ren->clear_pattern (X2 + p, Y1, X2 + 2 * p, Y2 - 2 * p);
+    set_shadow (ren, box.tmb, 128);
+    ren->clear_pattern (X2, Y1, X2 + p, Y2 - p);
+  }
+  if (Y1 > box.y1 - 4 * p) {
+    set_shadow (ren, box.tmb, 160);
+    ren->clear_pattern (X1, Y1 - p, X2, Y1);
+    set_shadow (ren, box.tmb, 128);
+    ren->clear_pattern (X1 - p, Y1 - 2 * p, X2 + p, Y1 - p);
+    set_shadow (ren, box.tmb, 64);
+    ren->clear_pattern (X1 - p, Y1 - 3 * p, X2 + p, Y1 - 2 * p);
+    set_shadow (ren, box.tmb, 16);
     ren->clear_pattern (X1 - p, Y1 - 4 * p, X2 + p, Y1 - 3 * p);
   }
 
@@ -381,8 +429,6 @@ struct crop_marks_box_rep : change_box_rep {
   SI w, h, lw, ll;
   crop_marks_box_rep (path ip, box pb, SI w, SI h, SI lw, SI ll);
   operator tree ();
-  void pre_display (renderer& ren);
-  void display_background (renderer ren);
   void accept (BoxVisitor& v);
 };
 
@@ -413,33 +459,54 @@ crop_marks_box_rep::operator tree () {
 }
 
 void
-crop_marks_box_rep::pre_display (renderer& ren) {
-  display_background (ren);
-}
-
-void
-crop_marks_box_rep::display_background (renderer ren) {
-  SI X1= sx1 (0), Y1= sy1 (0), X2= sx2 (0), Y2= sy2 (0);
+PreRenderVisitor::visit (crop_marks_box_rep& box) {
+  SI X1= box.sx1 (0), Y1= box.sy1 (0), X2= box.sx2 (0), Y2= box.sy2 (0);
 
   brush old_bgc= ren->get_background ();
   ren->set_background (white);
-  if (X1 > x1) ren->clear_pattern (x1, y1, X1, y2);
-  if (x2 > X2) ren->clear_pattern (X2, y1, x2, y2);
-  if (Y1 > y1) ren->clear_pattern (x1, y1, x2, Y1);
-  if (y2 > Y2) ren->clear_pattern (x1, Y2, x2, y2);
+  if (X1 > box.x1) ren->clear_pattern (box.x1, box.y1, X1, box.y2);
+  if (box.x2 > X2) ren->clear_pattern (X2, box.y1, box.x2, box.y2);
+  if (Y1 > box.y1) ren->clear_pattern (box.x1, box.y1, box.x2, Y1);
+  if (box.y2 > Y2) ren->clear_pattern (box.x1, Y2, box.x2, box.y2);
   ren->set_background (old_bgc);
 
   pencil old_pen= ren->get_pencil ();
-  pencil pen    = pencil (black, lw);
+  pencil pen    = pencil (black, box.lw);
   ren->set_pencil (pen);
-  ren->line (X1 - ll, Y1, X1 - lw, Y1);
-  ren->line (X1 - ll, Y2, X1 - lw, Y2);
-  ren->line (X2 + lw, Y1, X2 + ll, Y1);
-  ren->line (X2 + lw, Y2, X2 + ll, Y2);
-  ren->line (X1, Y1 - ll, X1, Y1 - lw);
-  ren->line (X2, Y1 - ll, X2, Y1 - lw);
-  ren->line (X1, Y2 + lw, X1, Y2 + ll);
-  ren->line (X2, Y2 + lw, X2, Y2 + ll);
+  ren->line (X1 - box.ll, Y1, X1 - box.lw, Y1);
+  ren->line (X1 - box.ll, Y2, X1 - box.lw, Y2);
+  ren->line (X2 + box.lw, Y1, X2 + box.ll, Y1);
+  ren->line (X2 + box.lw, Y2, X2 + box.ll, Y2);
+  ren->line (X1, Y1 - box.ll, X1, Y1 - box.lw);
+  ren->line (X2, Y1 - box.ll, X2, Y1 - box.lw);
+  ren->line (X1, Y2 + box.lw, X1, Y2 + box.ll);
+  ren->line (X2, Y2 + box.lw, X2, Y2 + box.ll);
+  ren->set_pencil (old_pen);
+}
+
+void
+BackgroundRenderVisitor::visit (crop_marks_box_rep& box) {
+  SI X1= box.sx1 (0), Y1= box.sy1 (0), X2= box.sx2 (0), Y2= box.sy2 (0);
+
+  brush old_bgc= ren->get_background ();
+  ren->set_background (white);
+  if (X1 > box.x1) ren->clear_pattern (box.x1, box.y1, X1, box.y2);
+  if (box.x2 > X2) ren->clear_pattern (X2, box.y1, box.x2, box.y2);
+  if (Y1 > box.y1) ren->clear_pattern (box.x1, box.y1, box.x2, Y1);
+  if (box.y2 > Y2) ren->clear_pattern (box.x1, Y2, box.x2, box.y2);
+  ren->set_background (old_bgc);
+
+  pencil old_pen= ren->get_pencil ();
+  pencil pen    = pencil (black, box.lw);
+  ren->set_pencil (pen);
+  ren->line (X1 - box.ll, Y1, X1 - box.lw, Y1);
+  ren->line (X1 - box.ll, Y2, X1 - box.lw, Y2);
+  ren->line (X2 + box.lw, Y1, X2 + box.ll, Y1);
+  ren->line (X2 + box.lw, Y2, X2 + box.ll, Y2);
+  ren->line (X1, Y1 - box.ll, X1, Y1 - box.lw);
+  ren->line (X2, Y1 - box.ll, X2, Y1 - box.lw);
+  ren->line (X1, Y2 + box.lw, X1, Y2 + box.ll);
+  ren->line (X2, Y2 + box.lw, X2, Y2 + box.ll);
   ren->set_pencil (old_pen);
 }
 

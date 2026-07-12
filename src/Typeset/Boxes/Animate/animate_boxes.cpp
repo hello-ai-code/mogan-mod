@@ -11,6 +11,7 @@
 
 #include "Boxes/box_visitor.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "Boxes/composite.hpp"
 #include "Boxes/construct.hpp"
 #include "Files/image_files.hpp"
@@ -38,15 +39,14 @@ struct anim_box_rep : public box_rep {
   double anim_duration () { return duration; }
   void   anim_position (double pos) { delay= pos; }
   double anim_time () { return pl->get_elapsed () - delay; }
-  void   pre_display (renderer& ren) {
-    (void) ren;
-    animated_flag= true;
-  }
   void accept (BoxVisitor& v);
 };
 
 void
-anim_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+PreRenderVisitor::visit (anim_box_rep& box) {
+  (void) box;
+  animated_flag= true;
+}
 
 
 struct composite_anim_box_rep : public composite_box_rep {
@@ -62,15 +62,14 @@ struct composite_anim_box_rep : public composite_box_rep {
   double anim_duration () { return duration; }
   void   anim_position (double pos) { delay= pos; }
   double anim_time () { return pl->get_elapsed () - delay; }
-  void   pre_display (renderer& ren) {
-    (void) ren;
-    animated_flag= true;
-  }
   void accept (BoxVisitor& v);
 };
 
 void
-composite_anim_box_rep::accept (BoxVisitor& v) { v.visit (*this); }
+PreRenderVisitor::visit (composite_anim_box_rep& box) {
+  (void) box;
+  animated_flag= true;
+}
 
 
 /******************************************************************************
@@ -122,7 +121,6 @@ public:
   void       anim_resync ();
   double     anim_next ();
   rectangles anim_invalid ();
-  void       pre_display (renderer& ren);
 
   path          find_box_path (SI x, SI y, SI delta, bool force, bool& found);
   path          find_box_path (path p, bool& found);
@@ -241,12 +239,12 @@ anim_compose_box_rep::anim_invalid () {
 }
 
 void
-anim_compose_box_rep::pre_display (renderer& ren) {
-  (void) ren;
+PreRenderVisitor::visit (anim_compose_box_rep& box) {
+  (void) box;
   animated_flag= true;
-  anim_resync ();
-  last_index= current;
-  last_delay= delay;
+  box.anim_resync ();
+  box.last_index= box.current;
+  box.last_delay= box.delay;
 }
 
 /******************************************************************************
@@ -306,7 +304,6 @@ struct anim_repeat_box_rep : public composite_anim_box_rep {
   void       anim_resync ();
   double     anim_next ();
   rectangles anim_invalid ();
-  void       pre_display (renderer& ren);
   void accept (BoxVisitor& v);
 };
 
@@ -353,11 +350,11 @@ anim_repeat_box_rep::anim_invalid () {
 }
 
 void
-anim_repeat_box_rep::pre_display (renderer& ren) {
-  (void) ren;
+PreRenderVisitor::visit (anim_repeat_box_rep& box) {
+  (void) box;
   animated_flag= true;
-  anim_resync ();
-  last_it= current_it;
+  box.anim_resync ();
+  box.last_it= box.current_it;
 }
 
 /******************************************************************************
@@ -377,8 +374,6 @@ struct anim_effect_box_rep : public composite_anim_box_rep {
   double     anim_next ();
   rectangles anim_invalid ();
 
-  void         pre_display (renderer& ren);
-  void         post_display (renderer& ren);
   virtual void set_position (double t)               = 0;
   virtual void set_clipping (renderer& ren, double t)= 0;
   void accept (BoxVisitor& v);
@@ -423,18 +418,20 @@ anim_effect_box_rep::anim_invalid () {
 }
 
 void
-anim_effect_box_rep::pre_display (renderer& ren) {
+PreRenderVisitor::visit (anim_effect_box_rep& box) {
   animated_flag= true;
-  anim_resync ();
-  set_position (current_x);
-  ren->get_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2);
-  set_clipping (ren, current_x);
-  last_x= current_x;
+  box.anim_resync ();
+  box.set_position (box.current_x);
+  ren->get_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2);
+  box.set_clipping (*ren, box.current_x);
+  box.last_x= box.current_x;
 }
 
 void
-anim_effect_box_rep::post_display (renderer& ren) {
-  ren->set_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2, true);
+PostRenderVisitor::visit (anim_effect_box_rep& box) {
+  ren->set_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2, true);
 }
 
 struct anim_translate_box_rep : public anim_effect_box_rep {
@@ -492,14 +489,6 @@ struct sound_box_rep : public anim_box_rep {
     if (exists_in_path ("play")) system ("play", u, "&");
     else if (exists_in_path ("afplay")) system ("afplay", u, "&");
   }
-  void pre_display (renderer& ren) {
-    (void) ren;
-    animated_flag= true;
-    double t     = anim_time ();
-    if (last_played < 0.0 && t >= 1000.0) last_played= t;
-    if (last_played < 30.0 && t >= 30.0) play_sound ();
-    last_played= t;
-  }
   double anim_next () {
     double t= anim_time ();
     if (t >= 30.0) return 1.0e12;
@@ -514,6 +503,15 @@ struct sound_box_rep : public anim_box_rep {
   }
   void accept (BoxVisitor& v);
 };
+
+void
+PreRenderVisitor::visit (sound_box_rep& box) {
+  animated_flag= true;
+  double t = box.anim_time ();
+  if (box.last_played < 0.0 && t >= 1000.0) box.last_played = t;
+  if (box.last_played < 30.0 && t >= 30.0) box.play_sound ();
+  box.last_played = t;
+}
 
 void
 sound_box_rep::accept (BoxVisitor& v) { v.visit (*this); }

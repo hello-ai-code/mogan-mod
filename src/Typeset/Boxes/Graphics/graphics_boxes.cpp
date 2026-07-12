@@ -14,6 +14,7 @@
 #include "Boxes/construct.hpp"
 #include "Boxes/graphics.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "env.hpp"
 #include "math_util.hpp"
 
@@ -32,8 +33,6 @@ struct graphics_box_rep : public composite_box_rep {
   grid  get_grid ();
   void  get_limits (point& lim1, point& lim2);
   operator tree () { return "graphics"; }
-  void          pre_display (renderer& ren);
-  void          post_display (renderer& ren);
   int           reindex (int i, int item, int n);
   virtual int   find_child (SI x, SI y, SI delta, bool force);
   gr_selections graphical_select (SI x, SI y, SI dist);
@@ -77,14 +76,16 @@ graphics_box_rep::get_limits (point& lim1b, point& lim2b) {
 }
 
 void
-graphics_box_rep::pre_display (renderer& ren) {
-  ren->get_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2);
-  ren->extra_clipping (x1, y1, x2, y2);
+PreRenderVisitor::visit (graphics_box_rep& box) {
+  ren->get_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2);
+  ren->extra_clipping (box.x1, box.y1, box.x2, box.y2);
 }
 
 void
-graphics_box_rep::post_display (renderer& ren) {
-  ren->set_clipping (old_clip_x1, old_clip_y1, old_clip_x2, old_clip_y2, true);
+PostRenderVisitor::visit (graphics_box_rep& box) {
+  ren->set_clipping (box.old_clip_x1, box.old_clip_y1,
+                     box.old_clip_x2, box.old_clip_y2, true);
 }
 
 int

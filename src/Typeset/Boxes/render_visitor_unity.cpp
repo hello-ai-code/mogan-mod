@@ -18,6 +18,10 @@
 /* render_visitor.cpp — RenderVisitor::visit_default() and vtable */
 #include "render_visitor.cpp"
 
+/* render_visitor_extra.cpp — PreRenderVisitor, PostRenderVisitor,
+   BackgroundRenderVisitor default implementations */
+#include "render_visitor_extra.cpp"
+
 /* box .cpp files with RenderVisitor::visit() implementations: */
 #include "Basic/basic_boxes.cpp"   /* test, line, polygon, arc, image */
 #include "Basic/rubber_boxes.cpp"  /* bracket */
@@ -27,5 +31,8 @@
 #include "Composite/misc_boxes.cpp"       /* page */
 #include "Composite/stack_boxes.cpp"      /* stack */
 #include "Modifier/change_boxes.cpp"      /* remember */
+#include "Modifier/highlight_boxes.cpp"   /* highlight */
+#include "Modifier/art_boxes.cpp"         /* art */
+#include "Animate/animate_boxes.cpp"      /* anim, sound */
 #include "Graphics/graphics_boxes.cpp"    /* point, curve, spacial */
 #include "Graphics/grid_boxes.cpp"        /* grid */

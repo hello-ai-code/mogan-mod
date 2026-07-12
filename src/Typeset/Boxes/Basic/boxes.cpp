@@ -12,6 +12,7 @@
 #include "boxes.hpp"
 #include "Boxes/box_visitor.hpp"
 #include "Boxes/render_visitor.hpp"
+#include "Boxes/render_visitor_extra.hpp"
 #include "converter.hpp"
 #include "file.hpp"
 #include "formatter.hpp"
@@ -650,7 +651,7 @@ box_rep::redraw (renderer ren, path p, rectangles& l) {
   if (ren->is_visible (x3 - delta, y3 - delta, x4 + delta, y4 + delta)) {
     rectangles ll;
     l= rectangles ();
-    pre_display (ren);
+    { PreRenderVisitor prv (ren); accept (prv); }
 
     int i, item= -1, n= subnr (), i1= n, i2= -1;
     if (!is_nil (p)) i1= i2= item= p->item;
@@ -683,7 +684,7 @@ box_rep::redraw (renderer ren, path p, rectangles& l) {
       nr_painted++;
     }
 
-    post_display (ren);
+    { PostRenderVisitor prv (ren); accept (prv); }
   }
   ren->move_origin (-x0, -y0);
 }
@@ -732,7 +733,7 @@ box_rep::accept (BoxVisitor& v) {
 void
 box_rep::redraw_background (renderer ren) {
   ren->move_origin (x0, y0);
-  display_background (ren);
+  { BackgroundRenderVisitor brv (ren); accept (brv); }
   int i, n= subnr ();
   for (i= 0; i < n; i++)
     subbox (i)->redraw_background (ren);
