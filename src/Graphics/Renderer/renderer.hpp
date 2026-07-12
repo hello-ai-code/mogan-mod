@@ -85,6 +85,7 @@ class renderer_rep;
 typedef renderer_rep* renderer;
 class x_drawable_rep;
 class qt_renderer_rep;
+class QPainter;
 class rectangle;
 class frame;
 typedef list<rectangle> rectangles;
@@ -112,6 +113,7 @@ public:
   virtual bool  is_started ();
   virtual void* get_handle ();
   virtual void* get_data_handle ();
+  virtual QPainter* get_qpainter ();
 
   /* coordinate system */
   void         set_origin (SI x, SI y);

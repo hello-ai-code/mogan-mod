@@ -91,6 +91,11 @@ renderer_rep::get_handle () {
   return NULL;
 }
 
+QPainter*
+renderer_rep::get_qpainter () {
+  return NULL;
+}
+
 void*
 renderer_rep::get_data_handle () {
   return NULL;

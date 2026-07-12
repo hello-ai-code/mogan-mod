@@ -30,6 +30,7 @@ public:
   qt_renderer_rep (QPainter* _painter, int w= 0, int h= 0);
   ~qt_renderer_rep ();
   void* get_handle ();
+  QPainter* get_qpainter () override;
 
   void set_zoom_factor (double zoom);
 

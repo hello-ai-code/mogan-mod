@@ -112,6 +112,11 @@ qt_renderer_rep::get_handle () {
   return (void*) this;
 }
 
+QPainter*
+qt_renderer_rep::get_qpainter () {
+  return painter;
+}
+
 void
 qt_renderer_rep::begin (void* handle) {
   QPaintDevice* device= static_cast<QPaintDevice*> (handle);
