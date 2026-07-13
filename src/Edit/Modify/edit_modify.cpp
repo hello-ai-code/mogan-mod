@@ -119,6 +119,7 @@ void
 edit_modify_rep::post_notify (path p) {
   // cout << "Post notify\n";
   if (!(rp <= p)) return;
+  last_change_path= p;
   selection_cancel ();
   cancel_alt_selections ();
   notify_change (THE_TREE);

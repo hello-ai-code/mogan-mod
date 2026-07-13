@@ -50,13 +50,14 @@ using moebius::drd::std_drd;
 
 editor_rep::editor_rep ()
     : simple_widget_rep (), cvw (NULL), mvw (NULL), drd (std_drd), et (the_et),
-      rp () {
+      rp (), last_change_path () {
   cout << "TeXmacs] warning, this virtual constructor should never be called\n";
 }
 
 editor_rep::editor_rep (server_rep* sv2, tm_buffer buf2)
     : simple_widget_rep (), sv (sv2), cvw (NULL), mvw (NULL), buf (buf2),
-      drd (buf->buf->title, std_drd), et (the_et), rp (buf2->rp) {}
+      drd (buf->buf->title, std_drd), et (the_et), rp (buf2->rp),
+      last_change_path () {}
 
 bool
 editor_rep::is_current_editor () {

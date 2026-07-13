@@ -27,7 +27,7 @@ protected:
   hashmap<string, tree>                fin;  // environment changes w.r.t. doc
   hashmap<string, tree>                grefs; // global references
   edit_env                             env;   // the environment for typesetting
-  typesetter                           ttt; // the (not) yet typesetted document
+  typesetter                           ttt;      // the (not) yet typesetted document
 
 protected:
   typesetter            get_typesetter ();

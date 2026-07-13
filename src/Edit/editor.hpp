@@ -63,6 +63,7 @@ protected:
   box       eb;          // box translation of tree
   path      rp;          // path to the root of the document in et
   path      tp;          // path of cursor in tree
+  path      last_change_path; // path of last tree modification (for incremental typesetting)
   bool      user_active; // is the user active ?
   string    detected_format= "verbatim";
 
