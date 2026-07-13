@@ -15,6 +15,7 @@
 #include "qt_simple_widget.hpp"
 #include "qt_utilities.hpp"
 #include "qt_window_widget.hpp"
+#include "render_target.hpp"
 
 #include "QTMCompletionPopup.hpp"
 #include "QTMImagePopup.hpp"
@@ -204,7 +205,7 @@ qt_simple_widget_rep::send (slot s, blackbox val) {
     coord4 p= open_box<coord4> (val);
 
     {
-      qt_renderer_rep* ren= the_qt_renderer ();
+      renderer ren = create_renderer (render_target::screen);
       {
         coord2 pt_or= from_qpoint (backing_pos);
         SI     ox   = -pt_or.x1;
@@ -387,7 +388,7 @@ impress (qt_simple_widget_rep* wid) {
     debug_qt << "impress (" << s.width () << "," << s.height () << ")\n";
   pxm.fill (Qt::transparent);
   {
-    qt_renderer_rep* ren= the_qt_renderer ();
+    renderer ren = create_renderer (render_target::screen);
     ren->begin (static_cast<QPaintDevice*> (&pxm));
     rectangle r= rectangle (0, 0, phys_s.width (), phys_s.height ());
     ren->set_origin (0, 0);
@@ -452,7 +453,7 @@ basic_renderer
 qt_simple_widget_rep::get_renderer () {
   ASSERT (backingPixmap != NULL,
           "internal error in qt_simple_widget_rep::get_renderer");
-  qt_renderer_rep* ren= the_qt_renderer ();
+  renderer ren = create_renderer (render_target::screen);
   ren->begin ((void*) backingPixmap);
   return ren;
 }
@@ -783,7 +784,7 @@ qt_simple_widget_rep::show_image_popup (tree current_tree, rectangle selr,
                                         int canvas_x, int canas_y) {
   ensure_image_popup ();
   imagePopUp->setImageTree (current_tree);
-  qt_renderer_rep* ren= the_qt_renderer ();
+  renderer ren = create_renderer (render_target::screen);
   imagePopUp->showPopup (ren, selr, magf, scroll_x, scroll_y, canvas_x,
                          canas_y);
 }
@@ -804,7 +805,7 @@ qt_simple_widget_rep::scroll_image_popup_by (SI x, SI y) {
     QPoint qp (x, y);
     coord2 p= from_qpoint (qp);
     imagePopUp->scrollBy (p.x1, p.x2);
-    qt_renderer_rep* ren= the_qt_renderer ();
+    renderer ren = create_renderer (render_target::screen);
     imagePopUp->updatePosition (ren);
   }
 }
@@ -833,7 +834,7 @@ qt_simple_widget_rep::show_text_popup (rectangle selr, double magf,
                                        int scroll_x, int scroll_y, int canvas_x,
                                        int canvas_y) {
   ensure_text_popup ();
-  qt_renderer_rep* ren= the_qt_renderer ();
+  renderer ren = create_renderer (render_target::screen);
   textPopup->showPopup (ren, selr, magf, scroll_x, scroll_y, canvas_x,
                         canvas_y);
 }
@@ -851,7 +852,7 @@ qt_simple_widget_rep::scroll_text_popup_by (SI x, SI y) {
     QPoint qp (x, y);
     coord2 p= from_qpoint (qp);
     textPopup->scrollBy (p.x1, p.x2);
-    qt_renderer_rep* ren= the_qt_renderer ();
+    renderer ren = create_renderer (render_target::screen);
     textPopup->updatePosition (ren);
   }
 }
