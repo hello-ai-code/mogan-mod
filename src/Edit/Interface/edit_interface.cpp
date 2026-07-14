@@ -1027,22 +1027,25 @@ edit_interface_rep::apply_changes () {
     // avoids clearing the environment cache, so unchanged subtrees can
     // skip re-evaluation entirely.
     SI x1, y1, x2, y2;
+#ifdef BENCHMARK_TYPESET
+    {
+      auto ts_start = std::chrono::steady_clock::now ();
+      bench_start ("typeset " * (as_string (buf->buf->name)));
+      typeset (x1, y1, x2, y2);
+      bench_end ("typeset " * (as_string (buf->buf->name)), 1000);
+      auto ts_end   = std::chrono::steady_clock::now ();
+      auto us       = std::chrono::duration_cast<std::chrono::microseconds> (
+                          ts_end - ts_start).count ();
+      static FILE* bench_f = fopen ("typeset_bench.log", "a");
+      if (bench_f) {
+        fprintf (bench_f, "%lld\n", (long long) us);
+        fflush (bench_f);
+      }
+    }
+#else
     bench_start ("typeset " * (as_string (buf->buf->name)));
     typeset (x1, y1, x2, y2);
     bench_end ("typeset " * (as_string (buf->buf->name)), 1000);
-#ifdef BENCHMARK_TYPESET
-    {
-      static FILE* bench_f = fopen ("typeset_bench.log", "a");
-      if (bench_f) {
-        static auto last_t = std::chrono::steady_clock::now ();
-        auto        now_t  = std::chrono::steady_clock::now ();
-        auto        ms     = std::chrono::duration_cast<std::chrono::milliseconds> (
-                          now_t - last_t).count ();
-        fprintf (bench_f, "%lld\n", (long long) ms);
-        fflush (bench_f);
-        last_t = now_t;
-      }
-    }
 #endif
     invalidate (x1 - 2 * pixel, y1 - 2 * pixel, x2 + 2 * pixel, y2 + 2 * pixel);
     // check_data_integrety ();
