@@ -67,5 +67,6 @@ bool   is_verbatim (tree t);
 /*** Markdown ***/
 tree   markdown_to_tree (string s);
 tree   markdown_document_to_tree (string s);
+string tree_to_markdown (tree t);
 
 #endif // defined CONVERT_H

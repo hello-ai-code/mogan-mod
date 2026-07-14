@@ -22,7 +22,7 @@
   (:suffix "md" "markdown" "mdown"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Markdown format detection
+;; Format detection
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (tm-define (markdown-recognizes? s)
@@ -41,3 +41,13 @@
 
 (define-format markdown
   (:must-recognize markdown-recognizes?))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Converters
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+/*
+ * Note: The actual conversion is done in C++ via:
+ *   - generic_to_tree(s, "markdown-snippet") -> tree
+ *   - tree_to_generic(tree, "markdown-snippet") -> string
+ */

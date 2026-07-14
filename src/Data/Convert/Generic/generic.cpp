@@ -64,5 +64,6 @@ generic_to_tree (string s, string fm) {
 
 string
 tree_to_generic (tree doc, string fm) {
+  if (fm == "markdown-snippet" || fm == "markdown") return tree_to_markdown (doc);
   return as_string (call ("texmacs->generic", doc, fm));
 }
