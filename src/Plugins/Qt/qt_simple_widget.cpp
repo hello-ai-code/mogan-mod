@@ -388,8 +388,7 @@ impress (qt_simple_widget_rep* wid) {
     debug_qt << "impress (" << s.width () << "," << s.height () << ")\n";
   pxm.fill (Qt::transparent);
   {
-    basic_renderer ren= static_cast<basic_renderer_rep*> (
-        create_renderer (render_target::screen));
+    qt_renderer_rep* ren = the_qt_renderer ();
     ren->begin (static_cast<QPaintDevice*> (&pxm));
     rectangle r= rectangle (0, 0, phys_s.width (), phys_s.height ());
     ren->set_origin (0, 0);
