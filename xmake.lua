@@ -621,6 +621,10 @@ target("libmogan") do
     set_configvar("USE_QT_PRINTER", 1)
     add_defines("USE_QT_PRINTER")
 
+    -- Performance benchmark: log typeset timing to typeset_bench.log
+    set_configvar("BENCHMARK_TYPESET", 1)
+    add_defines("BENCHMARK_TYPESET")
+
     add_packages("lolly")
     add_packages("liii-pdfhummus")
     add_packages("freetype")
