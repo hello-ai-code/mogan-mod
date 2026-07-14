@@ -1015,19 +1015,11 @@ edit_interface_rep::apply_changes () {
   // cout << "Handling tree\n";
   if ((env_change & THE_TREE) ||
       ((env_change & THE_ENVIRONMENT) && !skip_typeset_due_to_zoom)) {
-    if (rp <= last_change_path) {
-      // Incremental: update only the affected subtree
-      typeset_invalidate (last_change_path);
-    }
-    else {
-      // Full: clear everything
-      typeset_invalidate_env ();
-    }
-    last_change_path= path ();
+    typeset_invalidate_env ();
     SI x1, y1, x2, y2;
     bench_start ("typeset " * (as_string (buf->buf->name)));
     typeset (x1, y1, x2, y2);
-    bench_end ("typeset " * (as_string (buf->buf->name)), 0);
+    bench_end ("typeset " * (as_string (buf->buf->name)), 1000);
 #ifdef BENCHMARK_TYPESET
     {
       static FILE* bench_f = fopen ("typeset_bench.log", "a");
