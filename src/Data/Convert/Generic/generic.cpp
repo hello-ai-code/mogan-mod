@@ -57,6 +57,8 @@ format_exists (string format) {
 
 tree
 generic_to_tree (string s, string fm) {
+  if (fm == "markdown-snippet") return markdown_to_tree (s);
+  if (fm == "markdown-document") return markdown_document_to_tree (s);
   return as_tree (call ("generic->texmacs", s, fm));
 }
 

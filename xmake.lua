@@ -726,6 +726,7 @@ target("libmogan") do
     add_includedirs(moe_includedirs)
     add_includedirs({
             "src/Data/Convert",
+            "src/Data/Convert/Markdown",
             "src/Data/Document",
             "src/Data/History",
             "src/Data/Observers",
