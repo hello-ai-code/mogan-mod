@@ -1015,7 +1015,17 @@ edit_interface_rep::apply_changes () {
   // cout << "Handling tree\n";
   if ((env_change & THE_TREE) ||
       ((env_change & THE_ENVIRONMENT) && !skip_typeset_due_to_zoom)) {
-    typeset_invalidate_env ();
+    if (!((env_change & THE_TREE) &&
+          !(env_change & THE_ENVIRONMENT) &&
+          !skip_typeset_due_to_zoom)) {
+      // Full re-typeset: environment changed or zoom, clear env cache
+      typeset_invalidate_env ();
+    }
+    // Pure tree change (e.g., typing): bridge observers already synced
+    // the bridge tree incrementally, and typeset() reuses cached box
+    // subtrees for non-corrupted bridges.  Skipping typeset_invalidate_env()
+    // avoids clearing the environment cache, so unchanged subtrees can
+    // skip re-evaluation entirely.
     SI x1, y1, x2, y2;
     bench_start ("typeset " * (as_string (buf->buf->name)));
     typeset (x1, y1, x2, y2);
