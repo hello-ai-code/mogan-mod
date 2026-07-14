@@ -17,8 +17,12 @@
 ;; Markdown format definition
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-format markdown
-  (:name "Markdown")
+(define-format markdown-snippet
+  (:name "Markdown snippet")
+  (:suffix "md" "markdown" "mdown"))
+
+(define-format markdown-document
+  (:name "Markdown document")
   (:suffix "md" "markdown" "mdown"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -39,7 +43,7 @@
            (string-contains? s "\n1. ")
            (string-contains? s "```"))))
 
-(define-format markdown
+(define-format markdown-snippet
   (:must-recognize markdown-recognizes?))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -47,7 +51,52 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 /*
- * Note: The actual conversion is done in C++ via:
- *   - generic_to_tree(s, "markdown-snippet") -> tree
- *   - tree_to_generic(tree, "markdown-snippet") -> string
+ * The actual conversion is done in C++ via:
+ *   - generic_to_tree(s, "markdown-*") -> tree
+ *   - tree_to_generic(doc, "markdown-*") -> string
+ *
+ * The C++ functions are exported to Scheme as generic->texmacs and texmacs->generic.
  */
+
+; Wrapper for markdown -> texmacs-tree
+(tm-define (cpp-markdown->texmacs s opt)
+  (:synopsis "Convert Markdown string to TeXmacs tree")
+  (generic->texmacs s "markdown-snippet")
+) ;tm-define
+
+(tm-define (cpp-markdown-document->texmacs s opt)
+  (:synopsis "Convert Markdown document string to full TeXmacs tree")
+  (generic->texmacs s "markdown-document")
+) ;tm-define
+
+; Wrapper for texmacs-tree -> markdown
+(tm-define (cpp-texmacs->markdown t opt)
+  (:synopsis "Convert TeXmacs tree to Markdown string")
+  (texmacs->generic t "markdown-snippet")
+) ;tm-define
+
+(tm-define (cpp-texmacs->markdown-document t opt)
+  (:synopsis "Convert TeXmacs tree to Markdown document string")
+  (texmacs->generic t "markdown-document")
+) ;tm-define
+
+; Register converters using Scheme macro
+(converter markdown-snippet texmacs-tree
+  (:penalty 1.0)
+  (cpp-markdown->texmacs from)
+) ;converter
+
+(converter markdown-document texmacs-tree
+  (:penalty 1.0)
+  (cpp-markdown-document->texmacs from)
+) ;converter
+
+(converter texmacs-tree markdown-snippet
+  (:penalty 1.0)
+  (cpp-texmacs->markdown to)
+) ;converter
+
+(converter texmacs-tree markdown-document
+  (:penalty 1.0)
+  (cpp-texmacs->markdown-document to)
+) ;converter
