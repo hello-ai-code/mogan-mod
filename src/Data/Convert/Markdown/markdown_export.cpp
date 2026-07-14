@@ -45,6 +45,32 @@ is_heading_tag (string s) {
             s == "subparagraph" || s == "subsubparagraph");
 }
 
+/* Escape special Markdown characters in plain text */
+static string
+md_escape_text (const string& s) {
+    string result;
+    int n = N (s);
+    for (int i = 0; i < n; i++) {
+        char c = s[i];
+        switch (c) {
+            case '\\': result << "\\\\"; break;
+            case '#':  result << "\\#"; break;
+            case '*':  result << "\\*"; break;
+            case '_':  result << "\\_"; break;
+            case '[':  result << "\\["; break;
+            case ']':  result << "\\]"; break;
+            case '(':  result << "\\("; break;
+            case ')':  result << "\\)"; break;
+            case '<':  result << "\\<"; break;
+            case '>':  result << "\\>"; break;
+            case '`':  result << "\\`"; break;
+            case '|':  result << "\\|"; break;
+            default:   result << c; break;
+        }
+    }
+    return result;
+}
+
 /******************************************************************************
  * Main export function
  ******************************************************************************/
