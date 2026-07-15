@@ -28,4 +28,21 @@
 bool
 apply_markdown_inline_conversion (tree& et, path tp);
 
+/*
+ * B.4.1 Block-level heading conversion.
+ *
+ * Detects a leading "# " / "## " / … / "###### " marker at the start of the
+ * first paragraph (DOCUMENT[0]) and morphs that CONCAT paragraph in place into
+ * a TeXmacs section/subsection/… node (stripping the leading "# ").
+ *
+ * In-place morph (rather than a structural replace) is deliberate: the cursor
+ * path tp used elsewhere in apply_changes() must stay valid, and DOCUMENT's
+ * child index 0 is preserved. See markdown_input.cpp for the full rationale.
+ *
+ * @param et  The editor's main tree
+ * @return    true if a heading conversion was performed
+ */
+bool
+apply_markdown_heading_conversion (tree& et);
+
 #endif /* defined MARKDOWN_INPUT_H */

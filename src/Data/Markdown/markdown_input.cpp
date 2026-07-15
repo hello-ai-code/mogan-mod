@@ -84,3 +84,94 @@ apply_markdown_inline_conversion (tree& et, path tp) {
     parent = result.result;
     return true;
 }
+
+/******************************************************************************
+ * B.4.1  Block-level heading: `# ` / `## ` / … / `###### ` at the start of
+ *        a paragraph is transformed into a TeXmacs section heading.
+ *
+ * DESIGN NOTE — why "in-place morph" instead of a structural replace:
+ *   Mogan stores paragraphs as DOCUMENT children WITHOUT a <paragraph> wrapper:
+ *       DOCUMENT -> CONCAT("…text…")   (one CONCAT per paragraph)
+ *   When the user types at the start of a paragraph, the cursor path is
+ *       tp = (0).(0).k      // DOCUMENT[0] = CONCAT, CONCAT[0] = 1st text atom, k = char
+ *   apply_changes() calls this with that tp, then keeps using the SAME tp later
+ *   (find_check_cursor(tp), subtree(et, path_up(tp)), …).  If we replaced
+ *   DOCUMENT[0] with a brand-new `section` node, the indices would shift (the
+ *   CONCAT layer disappears) and tp would address an out-of-bounds position ->
+ *   crash.  So we MORPH et[0] in place: the DOCUMENT child index (0) is
+ *   preserved, only the (CONCAT, content) pair is rewritten as (section, content
+ *   minus the leading "# ").  The cursor tp stays valid, which is exactly what
+ *   transparent input needs.  The exported .md still round-trips correctly via
+ *   markdown_export (it iterates DOCUMENT children and looks at each child's tag).
+ *
+ * TRIGGER: only when the paragraph is a plain-text CONCAT that already starts
+ *   with N hashes followed by a space (e.g. the user just typed the space, or
+ *   the text begins that way).  We strip the leading "#… " and set the label.
+ *
+ * IDEMPOTENT: no-op when et[0] is already a section/subsection/etc.
+ ******************************************************************************/
+bool
+apply_markdown_heading_conversion (tree& et) {
+    if (is_nil (et) || is_atomic (et)) return false;
+    if (!is_func (et, DOCUMENT)) return false;
+    if (N (et) == 0) return false;
+
+    tree& para = et[0];          // the current paragraph (a CONCAT in a new doc)
+    /* Already a heading? nothing to do (idempotent).  Use is_func() rather
+       than as_string(L(para)) to avoid accessing the inactive union member on
+       MSVC (previously fixed in markdown_export.cpp). */
+    if (!is_func (para, "CONCAT")) return false;
+    if (has_formatting (para)) return false;   // don't clobber existing structure
+
+    /* Collect text and locate a leading "#… " marker. */
+    string text;
+    collect_text (para, text);
+    int n = N (text);
+    int hashes = 0;
+    while (hashes < n && text[hashes] == '#') hashes++;
+    if (hashes < 1 || hashes > 6) return false;          // 1..6 levels only
+    if (hashes >= n || text[hashes] != ' ') return false; // must be "# "
+    int after = hashes + 1;                               // skip "# "
+
+    /* Map level -> TeXmacs tag (keep in sync with markdown_import.cpp). */
+    string tag;
+    switch (hashes) {
+    case 1: tag = "section";        break;
+    case 2: tag = "subsection";     break;
+    case 3: tag = "subsubsection";  break;
+    case 4: tag = "paragraph";      break;
+    case 5: tag = "subparagraph";   break;
+    default: tag = "subsubparagraph"; break;
+    }
+
+    /* Drop the leading "# " from the raw text atoms.  We walk the CONCAT's
+       text atoms; each atom is a string label.  Skip 'after' chars total,
+       trimming the atom where the marker ends. */
+    int k = 0;
+    for (; k < N (para); k++) {
+        if (!is_atomic (para[k])) { after = 0; break; }   // safety: non-text before marker
+        string s = as_string (para[k]);
+        int sl = N (s);
+        if (sl < after) {
+            after -= sl;
+            para[k] = tree ("");
+            if (after <= 0) break;       // marker fully consumed across atoms
+        }
+        else { para[k] = tree (s (after, sl)); after = 0; break; }
+    }
+    if (after != 0) return false;     // marker split across atoms in an unexpected way
+
+    /* Build the heading node with compound(tag, …) — same shape as the B.1
+       import converter.  Reconstruct into a temporary, then assign into the
+       SAME DOCUMENT slot (et[0]) so the cursor path tp=(0).(0).k keeps its
+       outer index 0 valid.  We never reassign para (an lvalue ref) to a new
+       tree, and never write L(para)=… (union-label assignment is not portable
+       on MSVC), hence the explicit rebuild. */
+    tree heading = compound (tag);
+    for (int j = 0; j < N (para); j++)
+        if (!(is_atomic (para[j]) && is_empty (as_string (para[j]))))
+            heading << para[j];
+
+    et[0] = heading;     // slot 0 preserved; inner CONCAT layer removed
+    return true;
+}

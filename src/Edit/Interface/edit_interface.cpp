@@ -1020,6 +1020,12 @@ edit_interface_rep::apply_changes () {
       if (apply_markdown_inline_conversion (et, tp)) {
         env_change |= THE_TREE;
       }
+      // B.4.1 Block-level heading: morph a leading "# " paragraph into a
+      // section. Operates on et[0] only and preserves the cursor index, so it
+      // is safe to run alongside the inline pass.
+      if (apply_markdown_heading_conversion (et)) {
+        env_change |= THE_TREE;
+      }
     }
   }
 
