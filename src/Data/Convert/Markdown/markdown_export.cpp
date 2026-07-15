@@ -47,7 +47,7 @@ is_heading_tag (string s) {
 
 /* Escape special Markdown characters in plain text */
 static string
-md_escape_text (const string& s) {
+md_escape_text (string s) {
     string result;
     int n = N (s);
     for (int i = 0; i < n; i++) {
@@ -83,7 +83,7 @@ static void
 export_single_node (tree t, md_export_context& ctx) {
     if (is_atomic (t)) {
         /* Escape special Markdown characters */
-        const string& s = t->label;
+        string s = t->label;
         int n = N (s);
         for (int i = 0; i < n; i++) {
             char c = s[i];
@@ -168,7 +168,7 @@ export_single_node (tree t, md_export_context& ctx) {
     else if (is_label (t, "hlink")) {
         if (N (t) >= 2) {
             tree content = t[0];
-            string href = t[1]->label;
+            string href = as_string (t[1]);
             ctx.result << "[";
             export_single_node (content, ctx);
             ctx.result << "](" << href << ")";
@@ -176,7 +176,7 @@ export_single_node (tree t, md_export_context& ctx) {
     }
     else if (is_label (t, "image")) {
         if (N (t) >= 3) {
-            string src = t[1]->label;
+            string src = as_string (t[1]);
             tree alt = t[2];
             ctx.result << "![";
             export_single_node (alt, ctx);
@@ -302,8 +302,7 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
     /* Paragraph-like structures (flatten content) */
     if (label == "PARA" || label == "quote*") {
         int start = 0;
-        while (start < N (t) && 
-               (is_atomic (t[start]) && t[start]->label == ""))
+        while (start < N (t) && t[start] == "")
             start++;
 
         if (indent_level > 0) {
