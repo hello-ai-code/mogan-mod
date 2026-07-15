@@ -112,15 +112,16 @@ apply_markdown_inline_conversion (tree& et, path tp) {
  ******************************************************************************/
 bool
 apply_markdown_heading_conversion (tree& et) {
-    if (is_nil (et) || is_atomic (et)) return false;
+    if (is_atomic (et)) return false;
     if (!is_func (et, DOCUMENT)) return false;
     if (N (et) == 0) return false;
 
     tree& para = et[0];          // the current paragraph (a CONCAT in a new doc)
-    /* Already a heading? nothing to do (idempotent).  Use is_func() rather
-       than as_string(L(para)) to avoid accessing the inactive union member on
-       MSVC (previously fixed in markdown_export.cpp). */
-    if (!is_func (para, "CONCAT")) return false;
+    /* Already a heading? nothing to do (idempotent).  Use the tree==const char*
+       operator (auto is_atomic check, no inactive-union access) rather than
+       as_string(L(para)) / is_func(para,"CONCAT"), which would touch the
+       inactive union member or pass a string where an int arity is expected. */
+    if (!(para == "CONCAT")) return false;
     if (has_formatting (para)) return false;   // don't clobber existing structure
 
     /* Collect text and locate a leading "#… " marker. */
