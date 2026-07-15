@@ -40,12 +40,6 @@ starts_with (string s, int pos, const char* prefix) {
     return true;
 }
 
-static inline tree_label
-L (tree t) {
-    return moebius::L (t);
-}
-
-/* Check if a character is a letter (ASCII only) */
 static inline bool
 is_alpha (char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
