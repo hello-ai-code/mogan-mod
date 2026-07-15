@@ -35,29 +35,29 @@
   (let* (
          (temp-name (string-append "/" (uuid4)))  
          (temp-dir (string-append (os-temp-dir) temp-name))
-         (html-temp-url (system->url (string-append temp-dir ".html")))
+         (tex-temp-url (system->url (string-append temp-dir ".tex")))
          (docx-temp-url (system->url (string-append temp-dir ".docx")))
-         (html-dir (url-head (url->string html-temp-url))) ;; get dir of html-temp-url
-         (html-dir-str (url->string html-dir)))
-    ;; First, export the document to HTML
-    (export-buffer-main (current-buffer) html-temp-url "html" ())
-    ;; Then, use Pandoc to convert the HTML to DOCX
+         (tex-dir (url-head (url->string tex-temp-url)))
+         (tex-dir-str (url->string tex-dir)))
+    ;; First, export the document to LaTeX (preserves more structure than HTML)
+    (export-buffer-main (current-buffer) tex-temp-url "latex" ())
+    ;; Then, use Pandoc to convert the LaTeX to DOCX
     (if (has-binary-pandoc?)
         (begin
-        (chdir html-dir-str)
+        (chdir tex-dir-str)
         (let ((cmd (string-append "\"" (url->string (find-binary-pandoc)) "\""
-                                  " "
-                                  (url->string html-temp-url)
-                                  " -o "
-                                  (url->string docx-temp-url))))
+                                  " \""
+                                  (url->string tex-temp-url)
+                                  "\" -o \""
+                                  (url->string docx-temp-url)
+                                  "\"")))
           (debug-message "debug-io" (string-append "debug: cmd for Pandoc: " cmd "\n")) ;; For debugging
           (system cmd)
           (with result (string-load docx-temp-url)
-            (system-remove html-temp-url)
+            (system-remove tex-temp-url)
             (system-remove docx-temp-url)
             result))
-          ;; Delete the intermediate HTML file
-          ) ;; Expected:$TEXMACS_PATH/tests/tm.html")
+          ) ;; Expected: $TEXMACS_PATH/tests/tm.tex")
         (error "Pandoc binary not found"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -67,8 +67,9 @@
 (converter texmacs-tree docx-document
   (:require (has-binary-pandoc?))
   (:function-with-options texmacs-tree->docx-string)
-  (:option "texmacs->html:css" "on")
-  (:option "texmacs->html:mathjax" "off")
-  (:option "texmacs->html:mathml" "on")
-  (:option "texmacs->html:images" "off")
-  (:option "texmacs->html:css-stylesheet" "---"))
+  (:option "texmacs->latex:source-tracking" "off")
+  (:option "texmacs->latex:conservative" "on")
+  (:option "texmacs->latex:expand-macros" "on")
+  (:option "texmacs->latex:expand-user-macros" "off")
+  (:option "texmacs->latex:use-macros" "off")
+  (:option "texmacs->latex:encoding" "UTF-8"))
