@@ -13,6 +13,7 @@
 
 #include "tree.hpp"
 #include "string.hpp"
+#include <moebius/tree_label.hpp>
 
 using namespace moebius;
 
@@ -90,7 +91,7 @@ unescape_markers (string s) {
 /* Parse **text** → strong node */
 static tree
 parse_strong (string s, int start, int end) {
-    string content = unescape_markers (substring (s, start + 2, end - 2));
+    string content = unescape_markers (s (start + 2, end - 2));
     if (is_empty (content)) return tree ("");
     return tree ("strong", 1) << content;
 }
@@ -98,7 +99,7 @@ parse_strong (string s, int start, int end) {
 /* Parse *text* → em node */
 static tree
 parse_emphasis (string s, int start, int end) {
-    string content = unescape_markers (substring (s, start + 1, end - 1));
+    string content = unescape_markers (s (start + 1, end - 1));
     if (is_empty (content)) return tree ("");
     return tree ("em", 1) << content;
 }
@@ -106,7 +107,7 @@ parse_emphasis (string s, int start, int end) {
 /* Parse `code` → code/verbatim node */
 static tree
 parse_inline_code (string s, int start, int end) {
-    string content = substring (s, start + 1, end - 1);
+    string content = s (start + 1, end - 1);
     /* No unescaping for code blocks - literal content */
     return tree ("code", 1) << content;
 }
@@ -123,18 +124,18 @@ parse_link (string s, int start, int end) {
         }
     }
     
-    if (bracket_pos == -1) return tree (substring (s, start, end));
+    if (bracket_pos == -1) return tree (s (start, end));
     
     /* Extract text content */
-    string text = substring (s, start + 1, bracket_pos);
+    string text = s (start + 1, bracket_pos);
     
     /* Extract URL (everything between ( and )) */
     int url_start = bracket_pos + 2;
     int url_end = end - 1;
-    string url = substring (s, url_start, url_end);
+    string url = s (url_start, url_end);
     
     if (is_empty (text) || is_empty (url)) {
-        return tree (substring (s, start, end));
+        return tree (s (start, end));
     }
     
     tree link_node ("hlink", 2);
@@ -146,7 +147,7 @@ parse_link (string s, int start, int end) {
 /* Parse ~~text~~ → strikeout node */
 static tree
 parse_strikeout (string s, int start, int end) {
-    string content = unescape_markers (substring (s, start + 2, end - 2));
+    string content = unescape_markers (s (start + 2, end - 2));
     if (is_empty (content)) return tree ("");
     return tree ("strikeout", 1) << content;
 }
@@ -155,7 +156,7 @@ parse_strikeout (string s, int start, int end) {
 static tree
 parse_image (string s, int start, int end) {
     /* Format: ![alt](url) */
-    if (start + 2 >= end) return tree (substring (s, start, end));
+    if (start + 2 >= end) return tree (s (start, end));
     
     /* Find the ]( separator */
     int bracket_pos = -1;
@@ -166,18 +167,18 @@ parse_image (string s, int start, int end) {
         }
     }
     
-    if (bracket_pos == -1) return tree (substring (s, start, end));
+    if (bracket_pos == -1) return tree (s (start, end));
     
     /* Extract alt text */
-    string alt = substring (s, start + 2, bracket_pos);
+    string alt = s (start + 2, bracket_pos);
     
     /* Extract URL */
     int url_start = bracket_pos + 2;
     int url_end = end - 1;
-    string src = substring (s, url_start, url_end);
+    string src = s (url_start, url_end);
     
     if (is_empty (src)) {
-        return tree (substring (s, start, end));
+        return tree (s (start, end));
     }
     
     tree image_node ("image", 3);
@@ -229,9 +230,9 @@ try_parse_inline_markdown (string s) {
         }
         
         /* 2. Emphasis: *...* (but not inside words, and not **) */
-        if (pattern_type.empty () && s[pos] == '*' && !starts_with (s, pos, "**")) {
+        if (is_empty (pattern_type) && s[pos] == '*' && !starts_with (s, pos, "**")) {
             /* Check it's not part of a word boundary issue */
-            bool valid_start = (pos == 0 || (!is_alnum (s[pos - 1])));
+            bool valid_start = (pos == 0 || (!is_alpha (s[pos - 1]) && s[pos - 1] != '_'));
             if (valid_start) {
                 int end = find_closing_marker (s, pos, "*", "*");
                 if (end != -1 && end > pos + 1) {
@@ -243,7 +244,7 @@ try_parse_inline_markdown (string s) {
         }
         
         /* 3. Inline code: `...` */
-        if (pattern_type.empty () && s[pos] == '`') {
+        if (is_empty (pattern_type) && s[pos] == '`') {
             int end = find_closing_marker (s, pos, "`", "`");
             if (end != -1 && end > pos + 1) {
                 match_start = pos;
@@ -253,7 +254,7 @@ try_parse_inline_markdown (string s) {
         }
         
         /* 4. Image: ![alt](url) */
-        if (pattern_type.empty () && starts_with (s, pos, "![")) {
+        if (is_empty (pattern_type) && starts_with (s, pos, "![")) {
             int paren_pos = -1;
             for (int i = pos + 2; i < n; i++) {
                 if (s[i] == ']' && i + 1 < n && s[i + 1] == '(') {
@@ -278,7 +279,7 @@ try_parse_inline_markdown (string s) {
         }
         
         /* 5. Link: [text](url) - only if not preceded by ! */
-        if (pattern_type.empty () && s[pos] == '[' && !(pos > 0 && s[pos - 1] == '!')) {
+        if (is_empty (pattern_type) && s[pos] == '[' && !(pos > 0 && s[pos - 1] == '!')) {
             int paren_pos = -1;
             for (int i = pos + 1; i < n; i++) {
                 if (s[i] == ']' && i + 1 < n && s[i + 1] == '(') {
@@ -303,7 +304,7 @@ try_parse_inline_markdown (string s) {
         }
         
         /* 6. Strikeout: ~~...~~ */
-        if (pattern_type.empty () && starts_with (s, pos, "~~")) {
+        if (is_empty (pattern_type) && starts_with (s, pos, "~~")) {
             int end = find_closing_marker (s, pos, "~~", "~~");
             if (end != -1 && end > pos + 2) {
                 match_start = pos;
@@ -312,7 +313,7 @@ try_parse_inline_markdown (string s) {
             }
         }
         
-        if (!pattern_type.empty () && match_start != -1 && match_end != -1) {
+        if (!is_empty (pattern_type) && match_start != -1 && match_end != -1) {
             /* Complete match found - convert to tree */
             tree converted;
             
