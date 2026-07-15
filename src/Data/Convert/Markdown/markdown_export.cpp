@@ -277,8 +277,7 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         for (int i = 0; i < N (t); i++) {
             tree item = t[i];
             if (is_label (item, "item")) {
-                string prefix = as_string (num) << ". ";
-                ctx.result << prefix;
+                ctx.result << as_string (num) << ". ";
                 for (int j = 1; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
