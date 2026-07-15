@@ -78,4 +78,7 @@
   ("Remote tool" (toggle-preference "remote tool"))
   ("Source macros tool" (toggle-preference "source tool"))
   ("Versioning tool" (toggle-preference "versioning tool"))
+  ---
+  ;; B.4 Markdown transparent input toggle (runtime-switchable via preference)
+  ("Markdown 输入" (toggle-preference "markdown input"))
 ) ;menu-bind

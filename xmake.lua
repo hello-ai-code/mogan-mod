@@ -625,10 +625,6 @@ target("libmogan") do
     set_configvar("BENCHMARK_TYPESET", 1)
     add_defines("BENCHMARK_TYPESET")
 
-    -- Markdown transparent input: inline Markdown to TeXmacs formatting
-    set_configvar("ENABLE_MARKDOWN_INPUT", 1)
-    add_defines("ENABLE_MARKDOWN_INPUT")
-
     add_packages("lolly")
     add_packages("liii-pdfhummus")
     add_packages("freetype")

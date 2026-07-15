@@ -25,9 +25,7 @@
 
 #include <chrono>  // for BENCHMARK_TYPESET timing
 
-#ifdef ENABLE_MARKDOWN_INPUT
-#include "markdown_input.hpp"
-#endif
+#include "markdown_input.hpp"  // B.4 Markdown inline input (runtime-switchable)
 
 #include <moebius/drd/drd_mode.hpp>
 #include <moebius/drd/drd_std.hpp>
@@ -1016,14 +1014,14 @@ edit_interface_rep::apply_changes () {
     else typeset_invalidate_env ();
   }
 
-#ifdef ENABLE_MARKDOWN_INPUT
-  // cout << "Markdown inline conversion\n";
-  if ((env_change & THE_TREE) && !skip_typeset_due_to_zoom) {
-    if (apply_markdown_inline_conversion (et, tp)) {
-      env_change |= THE_TREE;
+  // B.4 Markdown inline conversion (runtime-switchable via preference)
+  if (get_preference ("markdown input", "on") == "on") {
+    if ((env_change & THE_TREE) && !skip_typeset_due_to_zoom) {
+      if (apply_markdown_inline_conversion (et, tp)) {
+        env_change |= THE_TREE;
+      }
     }
   }
-#endif
 
   // cout << "Handling tree\n";
   if ((env_change & THE_TREE) ||
