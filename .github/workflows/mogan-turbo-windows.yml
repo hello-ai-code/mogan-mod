@@ -84,9 +84,9 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
-          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua', 'xmake/packages.lua', 'xmake.lua') }}
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
           restore-keys: |
-            turbo-${{ runner.os }}-${{ runner.arch }}-xrepo-
+            turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
 
       # ----------------------------------------------------------
       # 6. 配置 — 沿用官方 -m release，加上 turbo 选项

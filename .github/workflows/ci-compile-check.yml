@@ -48,9 +48,9 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
-          key: check-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/vars.lua', 'xmake/packages.lua', 'xmake.lua') }}
+          key: check-${{ runner.os }}-${{ runner.arch }}-xrepo
           restore-keys: |
-            check-${{ runner.os }}-${{ runner.arch }}-xrepo-
+            check-${{ runner.os }}-${{ runner.arch }}-xrepo
 
       - name: Configure
         run: xmake config --yes -vD -m releasedbg
