@@ -61,10 +61,11 @@
 
 /*
  * The actual conversion is done in C++ via:
- *   - generic_to_tree(s, "markdown-*") -> tree
- *   - tree_to_generic(doc, "markdown-*") -> string
+ *   - generic_to_tree(s, "markdown-*") -> tree (calls markdown_to_tree)
+ *   - tree_to_generic(doc, "markdown-*") -> string (calls tree_to_markdown)
  *
- * The C++ functions are exported to Scheme as generic->texmacs and texmacs->generic.
+ * These C++ functions are called from generic->texmacs and texmacs->generic
+ * which are Scheme wrappers that call the C++ generic_to_tree/tree_to_generic.
  */
 
 ; Wrapper for markdown -> texmacs-tree
@@ -89,23 +90,23 @@
   (texmacs->generic t "markdown-document")
 ) ;tm-define
 
-; Register converters using Scheme macro
+; Register converters using correct :function syntax (inline body is silently ignored)
 (converter markdown-snippet texmacs-tree
   (:penalty 1.0)
-  (cpp-markdown->texmacs from)
+  (:function cpp-markdown->texmacs)
 ) ;converter
 
 (converter markdown-document texmacs-tree
   (:penalty 1.0)
-  (cpp-markdown-document->texmacs from)
+  (:function cpp-markdown-document->texmacs)
 ) ;converter
 
 (converter texmacs-tree markdown-snippet
   (:penalty 1.0)
-  (cpp-texmacs->markdown to)
+  (:function cpp-texmacs->markdown)
 ) ;converter
 
 (converter texmacs-tree markdown-document
   (:penalty 1.0)
-  (cpp-texmacs->markdown-document to)
+  (:function cpp-texmacs->markdown-document)
 ) ;converter
