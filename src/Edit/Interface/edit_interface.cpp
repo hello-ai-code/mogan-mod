@@ -1016,16 +1016,12 @@ edit_interface_rep::apply_changes () {
 
   // B.4 Markdown inline conversion (runtime-switchable via preference)
   if (get_preference ("markdown input", "on") == "on") {
-    if ((env_change & THE_TREE) && !skip_typeset_due_to_zoom) {
-      if (apply_markdown_inline_conversion (et, tp)) {
-        env_change |= THE_TREE;
-      }
+    if (env_change & THE_TREE) {
+      apply_markdown_inline_conversion (et, tp);
       // B.4.1 Block-level heading: morph a leading "# " paragraph into a
       // section. Operates on et[0] only and preserves the cursor index, so it
       // is safe to run alongside the inline pass.
-      if (apply_markdown_heading_conversion (et)) {
-        env_change |= THE_TREE;
-      }
+      apply_markdown_heading_conversion (et);
     }
   }
 

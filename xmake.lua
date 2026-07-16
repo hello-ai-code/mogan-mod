@@ -625,6 +625,10 @@ target("libmogan") do
     set_configvar("BENCHMARK_TYPESET", 1)
     add_defines("BENCHMARK_TYPESET")
 
+    -- B.4 Markdown transparent input: inline md→tree conversion on every keystroke
+    set_configvar("ENABLE_MARKDOWN_INPUT", 1)
+    add_defines("ENABLE_MARKDOWN_INPUT")
+
     add_packages("lolly")
     add_packages("liii-pdfhummus")
     add_packages("freetype")
