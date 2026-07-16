@@ -20,6 +20,7 @@ on:
       - 'src/**'
       - '!src/Plugins/Macos/**'
       - '!src/Plugins/Unix/**'
+      - 'TeXmacs/**'
       - 'xmake.lua'
       - 'xmake/packages.lua'
       - '.github/workflows/mogan-turbo-windows.yml'

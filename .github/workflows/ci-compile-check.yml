@@ -13,6 +13,7 @@ on:
       - 'src/**'
       - '!src/Plugins/Macos/**'
       - '!src/Plugins/Unix/**'
+      - 'TeXmacs/**'
       - 'xmake.lua'
       - 'xmake/packages.lua'
       - '.github/workflows/ci-compile-check.yml'
