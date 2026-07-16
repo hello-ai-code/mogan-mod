@@ -280,6 +280,9 @@
  ---
  (link export-top-menu)
  ---
+ ((eval '(concat "Export as " "Markdown"))
+  (choose-file (buffer-exporter "markdown-snippet") "Save Markdown file" "md")
+ ) ;
  ((eval '(concat "Export as " "Pdf"))
   (choose-file wrapped-print-to-file "Save pdf file" "pdf")
  ) ;
@@ -405,6 +408,7 @@
  (-> "Import"
    (link import-import-menu)
    ---
+   ("Markdown" (choose-file (buffer-importer "markdown-snippet") "Load Markdown file" "md"))
    ("Pdf with embedded document"
      (choose-file wrapped-import-pdf-embeded-with-tmu "Import pdf file" "tmu.pdf")
    ) ;
@@ -415,6 +419,7 @@
    (when (defined? 'texmacs->latex-document)
      ("LaTeX" (choose-file export-latex-file "Save LaTeX file" "latex"))
    ) ;when
+   ("Markdown" (choose-file (buffer-exporter "markdown-snippet") "Save Markdown file" "md"))
    ("TM document" (choose-file save-buffer-as "Save TeXmacs file" "texmacs"))
    ("Pdf" (choose-file wrapped-print-to-file "Save pdf file" "pdf"))
    ("Pdf with embedded document"
