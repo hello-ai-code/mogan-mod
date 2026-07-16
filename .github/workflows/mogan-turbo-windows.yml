@@ -88,6 +88,7 @@ jobs:
           key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
           restore-keys: |
             turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
+          save-always: true
 
       # ----------------------------------------------------------
       # 6. 配置 — 沿用官方 -m release，加上 turbo 选项
