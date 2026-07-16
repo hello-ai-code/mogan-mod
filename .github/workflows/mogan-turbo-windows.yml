@@ -85,9 +85,9 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
-          key: turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/packages.lua', 'xmake.lua') }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ runner.arch }}-xrepo
+            xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-
           save-always: true
 
       # ----------------------------------------------------------
