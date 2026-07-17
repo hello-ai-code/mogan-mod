@@ -80,15 +80,15 @@ jobs:
       # ----------------------------------------------------------
       # 5. 缓存 xrepo 包
       # ----------------------------------------------------------
-      - name: Cache xrepo packages
-        uses: actions/cache@v4
+      - name: Restore xrepo packages cache
+        id: cache-xrepo
+        uses: actions/cache/restore@v4
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
           key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/packages.lua', 'xmake.lua') }}
           restore-keys: |
             xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-
-          save-always: true
 
       # ----------------------------------------------------------
       # 6. 配置 — 沿用官方 -m release，加上 turbo 选项
@@ -153,10 +153,14 @@ jobs:
             Write-Host "✅ Downloaded $fn"
           }
 
-          # 下载 ghostscript
+          # 下载 ghostscript (非致命: 若 URL 失效则跳过)
           $gsDst = "${{ github.workspace }}\build\packages\stem\data\bin\gs.exe"
-          wget -q "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/gs.exe" -O $gsDst
-          Write-Host "✅ gs.exe downloaded"
+          wget -q "https://github.com/XmacsLabs/mogan/releases/download/v1.2.9.7/gs.exe" -O $gsDst 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ gs.exe downloaded"
+          } else {
+            Write-Host "⚠️ gs.exe download returned exit $LASTEXITCODE (non-fatal, continuing)"
+          }
 
       # ----------------------------------------------------------
       # 9. 生成安装包 — 官方流程！产出 NSIS .exe 安装器
@@ -277,7 +281,18 @@ jobs:
           Write-Host "✅ Release $tag created and assets uploaded"
 
       # ----------------------------------------------------------
-      # 14. 摘要
+      # 14. 保存 xrepo 包缓存（即使前面的步骤失败也保存）
+      # ----------------------------------------------------------
+      - name: Save xrepo packages cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.xmake-global\packages
+          key: ${{ steps.cache-xrepo.outputs.cache-primary-key }}
+
+      # ----------------------------------------------------------
+      # 15. 摘要
       # ----------------------------------------------------------
       - name: Summary
         run: |

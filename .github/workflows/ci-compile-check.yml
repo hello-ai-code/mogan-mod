@@ -44,8 +44,9 @@ jobs:
       - name: Set xmake global dir
         run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
 
-      - name: Cache xrepo packages
-        uses: actions/cache@v4
+      - name: Restore xrepo packages cache
+        id: cache-xrepo
+        uses: actions/cache/restore@v4
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
@@ -58,6 +59,14 @@ jobs:
 
       - name: Build stem
         run: xmake build -vD stem
+
+      - name: Save xrepo packages cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ github.workspace }}\.xmake-global\packages
+          key: ${{ steps.cache-xrepo.outputs.cache-primary-key }}
 
       - name: Summary
         run: Write-Host "✅ Compile check passed for ${{ github.sha }}"
