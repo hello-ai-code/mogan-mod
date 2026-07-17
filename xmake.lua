@@ -1016,6 +1016,7 @@ target("stem") do
     add_files("src/Mogan/Research/research.cpp")
     -- md4c Markdown parser: compiled as C (not C++) to avoid MSVC void*-cast errors
     add_files("src/Data/Convert/Markdown/md4c.c")
+    add_files("src/Data/Markdown/markdown_input.cpp")
     -- Unity build: all box files + RenderVisitor compiled in a single .obj
     -- to resolve MSVC LTCG cross-TU vtable references (LNK2001).
     add_files("src/Typeset/Boxes/render_visitor_unity.cpp")
