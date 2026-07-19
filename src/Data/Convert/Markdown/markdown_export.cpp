@@ -131,7 +131,7 @@ export_single_node (tree t, md_export_context& ctx) {
     }
     else if (is_label (t, "code", "verbatim")) {
         ctx.result << "`";
-        for (int i = 1; i < N (t); i++)
+        for (int i = 0; i < N (t); i++)
             export_single_node (t[i], ctx);
         ctx.result << "`";
     }
@@ -213,11 +213,26 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Body/TeXmacs wrapper: unwrap */
-    if (label == "body" || label == "TeXmacs" || 
-        label == "initial" || label == "style") {
+    /* Body: unwrap content */
+    if (label == "body") {
         for (int i = 0; i < N (t); i++)
             export_tree_to_markdown (t[i], ctx, indent_level);
+        return;
+    }
+
+    /* TeXmacs wrapper: skip metadata children (version, style, initial),
+     * only export the body child (typically at index 2). */
+    if (label == "TeXmacs") {
+        for (int i = 0; i < N (t); i++) {
+            tree child = t[i];
+            if (!is_atomic (child) && as_string (L (child)) == "body")
+                export_tree_to_markdown (child, ctx, indent_level);
+        }
+        return;
+    }
+
+    /* Initial/style: skip (metadata, not document content) */
+    if (label == "initial" || label == "style") {
         return;
     }
 
@@ -259,6 +274,7 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
     if (is_label (t, "itemize")) {
         for (int i = 0; i < N (t); i++) {
             tree item = t[i];
+            ctx.result << "- ";
             if (is_label (item, "item")) {
                 for (int j = 1; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
@@ -291,10 +307,26 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Quote block */
+    /* Quote block: add "> " prefix to each line */
     if (is_label (t, "quote")) {
+        /* Buffer the children output first, then prefix each line with "> " */
+        md_export_context inner;
         for (int i = 0; i < N (t); i++)
-            export_tree_to_markdown (t[i], ctx, indent_level + 1);
+            export_tree_to_markdown (t[i], inner, indent_level + 1);
+        string raw = inner.result;
+        /* Prefix each line with "> " */
+        int pos = 0;
+        int len = N (raw);
+        while (pos < len) {
+            ctx.result << "> ";
+            while (pos < len && raw[pos] != '\n') {
+                ctx.result << raw[pos];
+                pos++;
+            }
+            ctx.result << "\n";
+            if (pos < len) pos++; /* skip \n */
+        }
+        ctx.result << "\n";
         return;
     }
 
@@ -322,15 +354,18 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Verbatim/code block */
+    /* Verbatim/code block: first child is the code text content */
     if (is_label (t, "verbatim")) {
         string code_text;
-        for (int i = 1; i < N (t); i++) {
+        string lang;
+        for (int i = 0; i < N (t); i++) {
             if (is_atomic (t[i]))
                 code_text << t[i]->label;
         }
 
-        ctx.result << "```\n";
+        ctx.result << "```";
+        /* TODO: store language tag in a separate child for proper export */
+        ctx.result << "\n";
         ctx.result << code_text;
         if (N (code_text) > 0 && code_text[N(code_text)-1] != '\n')
             ctx.result << "\n";
