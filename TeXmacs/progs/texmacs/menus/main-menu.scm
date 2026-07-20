@@ -199,6 +199,7 @@
   (=> (balloon (icon "tm_open.xpm") "Load a file") (link load-menu))
   (=> (balloon (icon "tm_save.xpm") "Save this buffer") (link save-menu))
   ((balloon (icon "tm_build.xpm") "Update this buffer") (update-document "all"))
+  (=> (balloon (icon "tm_view.xpm") "Page rendering mode") (link page-rendering-menu))
   (=> (balloon (icon "tm_print.xpm") "Print") (link print-menu-inline))
   (if (use-menus?)
     (=> (balloon (icon "tm_preferences.xpm") "Change the TeXmacs preferences")
