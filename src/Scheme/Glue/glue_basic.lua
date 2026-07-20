@@ -1978,6 +1978,22 @@ function main()
                 cpp_name = "get_pretty_os_name",
                 ret_type = "string"
             },
+            {
+                scm_name = "tree-to-markdown",
+                cpp_name = "tree_to_markdown",
+                ret_type = "string",
+                arg_list = {
+                    "tree"
+                }
+            },
+            {
+                scm_name = "markdown-to-tree",
+                cpp_name = "markdown_to_tree",
+                ret_type = "scheme_tree",
+                arg_list = {
+                    "string"
+                }
+            },
         }
     }
 end

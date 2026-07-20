@@ -1016,7 +1016,12 @@ edit_interface_rep::apply_changes () {
 
   // B.4 Markdown inline conversion (runtime-switchable via preference)
   if (get_preference ("markdown input", "on") == "on") {
-    if (env_change & THE_TREE) {
+    // Trigger on a wider set of edit events so that plain typing and pasting
+    // (which only set THE_CURSOR / THE_SELECTION, not THE_TREE) also run the
+    // markdown conversion passes. The markdown_input helpers already guard
+    // against non-concat / already-formatted trees, so running them here is
+    // safe and lossless.
+    if (env_change & (THE_TREE | THE_CURSOR | THE_SELECTION)) {
       apply_markdown_inline_conversion (et, tp);
       // B.4.1 Block-level heading: morph a leading "# " paragraph into a
       // section. Operates on et[0] only and preserves the cursor index, so it

@@ -61,33 +61,45 @@
 
 /*
  * The actual conversion is done in C++ via:
- *   - generic_to_tree(s, "markdown-*") -> tree (calls markdown_to_tree)
- *   - tree_to_generic(doc, "markdown-*") -> string (calls tree_to_markdown)
+ *   - markdown_to_tree(s) -> tree
+ *   - tree_to_markdown(doc) -> string
  *
- * These C++ functions are called from generic->texmacs and texmacs->generic
- * which are Scheme wrappers that call the C++ generic_to_tree/tree_to_generic.
+ * Previously these wrappers called generic->texmacs / texmacs->generic,
+ * which route through the convert path table and re-enter the very
+ * converter being registered here, causing infinite recursion and the
+ * "Error: bad format or data." fallback. We now call the C++ primitives
+ * directly (exposed through glue_basic.lua) to bypass the path table.
+ * The Scheme layer still guards against empty/erroneous C++ output.
  */
 
 ; Wrapper for markdown -> texmacs-tree
 (tm-define (cpp-markdown->texmacs s opt)
   (:synopsis "Convert Markdown string to TeXmacs tree")
-  (generic->texmacs s "markdown-snippet")
+  (with r (markdown-to-tree s)
+    (if (and r (not (tree-is? r 'error)))
+        r
+        (stree->tree '(error "bad format or data"))))
 ) ;tm-define
 
 (tm-define (cpp-markdown-document->texmacs s opt)
   (:synopsis "Convert Markdown document string to full TeXmacs tree")
-  (generic->texmacs s "markdown-document")
+  (with r (markdown-to-tree s)
+    (if (and r (not (tree-is? r 'error)))
+        r
+        (stree->tree '(error "bad format or data"))))
 ) ;tm-define
 
 ; Wrapper for texmacs-tree -> markdown
 (tm-define (cpp-texmacs->markdown t opt)
   (:synopsis "Convert TeXmacs tree to Markdown string")
-  (texmacs->generic t "markdown-snippet")
+  (with r (tree-to-markdown t)
+    (if (string? r) r "Error: bad format or data."))
 ) ;tm-define
 
 (tm-define (cpp-texmacs->markdown-document t opt)
   (:synopsis "Convert TeXmacs tree to Markdown document string")
-  (texmacs->generic t "markdown-document")
+  (with r (tree-to-markdown t)
+    (if (string? r) r "Error: bad format or data."))
 ) ;tm-define
 
 ; Register converters using correct :function syntax (inline body is silently ignored)
