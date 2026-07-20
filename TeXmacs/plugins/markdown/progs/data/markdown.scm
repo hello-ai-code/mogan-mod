@@ -28,7 +28,8 @@
 
 (define-format markdown-snippet
   (:name "Markdown snippet")
-  (:suffix "md" "markdown" "mdown"))
+  (:suffix "md" "markdown" "mdown")
+  (:must-recognize markdown-recognizes?))
 
 (define-format markdown-document
   (:name "Markdown document")
@@ -52,14 +53,11 @@
            (string-contains? s "\n1. ")
            (string-contains? s "```"))))
 
-(define-format markdown-snippet
-  (:must-recognize markdown-recognizes?))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Converters
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/*
+#|
  * The actual conversion is done in C++ via:
  *   - markdown_to_tree(s) -> tree
  *   - tree_to_markdown(doc) -> string
@@ -70,10 +68,14 @@
  * "Error: bad format or data." fallback. We now call the C++ primitives
  * directly (exposed through glue_basic.lua) to bypass the path table.
  * The Scheme layer still guards against empty/erroneous C++ output.
- */
+ |
+;
 
 ; Wrapper for markdown -> texmacs-tree
-(tm-define (cpp-markdown->texmacs s opt)
+; NOTE: :function wrapper receives exactly ONE argument (x) from the
+; converter system (see tm-convert.scm line 109).  Do NOT add a second
+; 'opt' parameter — it would cause "wrong number of arguments" at runtime.
+(tm-define (cpp-markdown->texmacs s)
   (:synopsis "Convert Markdown string to TeXmacs tree")
   (with r (markdown-to-tree s)
     (if (and r (not (tree-is? r 'error)))
@@ -81,7 +83,7 @@
         (stree->tree '(error "bad format or data"))))
 ) ;tm-define
 
-(tm-define (cpp-markdown-document->texmacs s opt)
+(tm-define (cpp-markdown-document->texmacs s)
   (:synopsis "Convert Markdown document string to full TeXmacs tree")
   (with r (markdown-to-tree s)
     (if (and r (not (tree-is? r 'error)))
@@ -90,13 +92,13 @@
 ) ;tm-define
 
 ; Wrapper for texmacs-tree -> markdown
-(tm-define (cpp-texmacs->markdown t opt)
+(tm-define (cpp-texmacs->markdown t)
   (:synopsis "Convert TeXmacs tree to Markdown string")
   (with r (tree-to-markdown t)
     (if (string? r) r "Error: bad format or data."))
 ) ;tm-define
 
-(tm-define (cpp-texmacs->markdown-document t opt)
+(tm-define (cpp-texmacs->markdown-document t)
   (:synopsis "Convert TeXmacs tree to Markdown document string")
   (with r (tree-to-markdown t)
     (if (string? r) r "Error: bad format or data."))

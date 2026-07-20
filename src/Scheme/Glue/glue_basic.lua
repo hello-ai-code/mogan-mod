@@ -1922,7 +1922,7 @@ function main()
             {
                 scm_name = "alt-window-get-size",
                 cpp_name = "window_get_size",
-                ret_type = "scheme_tree",
+                ret_type = "tree",
                 arg_list = {
                     "int"
                 }
@@ -1940,7 +1940,7 @@ function main()
             {
                 scm_name = "alt-window-get-position",
                 cpp_name = "window_get_position",
-                ret_type = "scheme_tree",
+                ret_type = "tree",
                 arg_list = {
                     "int"
                 }
@@ -1989,7 +1989,7 @@ function main()
             {
                 scm_name = "markdown-to-tree",
                 cpp_name = "markdown_to_tree",
-                ret_type = "scheme_tree",
+                ret_type = "tree",
                 arg_list = {
                     "string"
                 }

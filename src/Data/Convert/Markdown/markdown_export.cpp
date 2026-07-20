@@ -404,6 +404,7 @@ tree_to_markdown (tree t) {
     string out;
     for (int i = 0; i < len; i++)
         out << ctx.result[i];
+    out << '\n';
     
     return out;
 }
