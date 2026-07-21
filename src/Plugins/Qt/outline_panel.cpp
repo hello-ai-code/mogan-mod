@@ -141,7 +141,7 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
 
   editor ed = get_current_editor ();
   if (!is_nil (ed)) {
-    ed->go_to (p, true);
+    ed->go_to (p);
   }
 }
 

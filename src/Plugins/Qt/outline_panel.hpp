@@ -64,11 +64,11 @@ private:
   };
 
   /** Recursive traversal: collect all sections into a flat list. */
-  void collectSections (const tree& t, path base,
+  void collectSections (tree t, path base,
                         QVector<SectionEntry>& entries);
 
   /** Serialize a path to a comma-separated string for QVariant storage. */
-  static QString pathToString (const path& p);
+  static QString pathToString (path p);
 
   /** Deserialize back. */
   static path stringToPath (const QString& s);
