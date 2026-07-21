@@ -50,7 +50,7 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
-          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake/packages.lua', 'xmake.lua') }}
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua') }}
           restore-keys: |
             xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-
 
