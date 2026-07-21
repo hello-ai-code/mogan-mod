@@ -14,6 +14,7 @@
 #include "new_view.hpp"
 #include "path.hpp"
 #include "tree.hpp"
+#include "editor.hpp"
 
 #include "qt_tm_widget.hpp"
 
@@ -154,7 +155,7 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
 /* ================================================================== */
 
 void
-OutlinePanel::collectSections (const tree& t, path base,
+OutlinePanel::collectSections (tree t, path base,
                                QVector<SectionEntry>& entries) {
   if (is_atomic (t)) return;
 
@@ -208,7 +209,7 @@ OutlinePanel::buildOutlineTree (const QVector<SectionEntry>& entries) {
 
   for (const auto& entry : entries) {
     QTreeWidgetItem* item = new QTreeWidgetItem;
-    item->setText (0, QString::fromUtf8 (entry.title.c_str ()));
+    item->setText (0, QString::fromUtf8 (as_charp (entry.title)));
     item->setData (0, Qt::UserRole, QVariant (pathToString (entry.p)));
 
     int lvl = entry.level;
@@ -240,7 +241,7 @@ OutlinePanel::buildOutlineTree (const QVector<SectionEntry>& entries) {
 /* ================================================================== */
 
 QString
-OutlinePanel::pathToString (const path& p) {
+OutlinePanel::pathToString (path p) {
   QStringList parts;
   int n = N (p);
   for (int i = 0; i < n; ++i) {
