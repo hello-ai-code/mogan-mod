@@ -11,13 +11,14 @@
 #ifndef OUTLINE_PANEL_HPP
 #define OUTLINE_PANEL_HPP
 
-#include "hashset.hpp"
 #include "path.hpp"
+#include "string.hpp"
 #include "tree.hpp"
 
 #include <QDockWidget>
 #include <QTimer>
 #include <QTreeWidget>
+#include <QVector>
 
 #include <moebius/tree_label.hpp>
 
@@ -30,6 +31,12 @@ class qt_tm_widget_rep;
  *
  * Periodically refreshes from the edit tree (via a 500 ms timer) and
  * allows the user to click a section heading to navigate there.
+ *
+ * Reuses the same section-tag logic as focus toolbar's
+ * tree-search-sections (tree_traverse.cpp): a section node is a
+ * compound tree with exactly one child whose tree_label is one of
+ * part/chapter/section/subsection/... (with or without * suffix).
+ * Hierarchical nesting mirrors the Scheme filter-sections logic.
  */
 class OutlinePanel : public QDockWidget {
   Q_OBJECT
@@ -49,11 +56,16 @@ private slots:
   void onItemClicked (QTreeWidgetItem* item, int column);
 
 private:
-  /** Ensure the cached section-tag set is populated (one-shot). */
-  static void ensureSectionTags ();
+  /** One collected section entry. */
+  struct SectionEntry {
+    path  p;      // tree path for navigation
+    int   level;  // nesting level (1=part … 7=subparagraph)
+    string title; // display text
+  };
 
-  /** Recursive traversal: collect sections into the tree view. */
-  void collectOutline (const tree& t, path base, QTreeWidgetItem* parent);
+  /** Recursive traversal: collect all sections into a flat list. */
+  void collectSections (const tree& t, path base,
+                        QVector<SectionEntry>& entries);
 
   /** Serialize a path to a comma-separated string for QVariant storage. */
   static QString pathToString (const path& p);
@@ -61,13 +73,12 @@ private:
   /** Deserialize back. */
   static path stringToPath (const QString& s);
 
+  /** Build the QTreeWidget hierarchy from a flat list of entries. */
+  void buildOutlineTree (const QVector<SectionEntry>& entries);
+
   qt_tm_widget_rep* m_parentWidget;
   QTreeWidget* m_tree;
   QTimer* m_refreshTimer;
-
-  /** Lazily-initialised set of all section tree_labels. */
-  static hashset<tree_label> the_section_tags;
-  static bool section_tags_ready;
 };
 
 #endif // OUTLINE_PANEL_HPP

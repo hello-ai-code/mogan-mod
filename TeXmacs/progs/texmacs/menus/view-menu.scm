@@ -154,6 +154,7 @@
   ) ;->
 
   ("Snap to pages" (toggle-snap-to-pages))
+  ("目录大纲" (toggle-outline-sidebar))
   ---
   (when (visible-header?)
     ("Main icon bar" (toggle-visible-icon-bar 0))

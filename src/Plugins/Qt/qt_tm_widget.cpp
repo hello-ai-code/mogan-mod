@@ -217,7 +217,8 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
       startupTabMode (false), pdfViewerWidget (nullptr), pdfTabMode (false),
       currentPdfPath (""), lastLoadedPdfPath (""), chatContentWidget (nullptr),
       chatTabMode (false), chatSideDock (nullptr),
-      chatSidebarToggleBtn (nullptr), chatSidebarMode (false),
+      chatSidebarToggleBtn (nullptr), outlineDockToggleBtn (nullptr),
+      chatSidebarMode (false),
       chatSidebarModeMemory_ (false), centralWidgetUpdatesFrozen_ (false) {
   type= texmacs_widget;
 
@@ -898,6 +899,55 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
     outlineDock->setMinimumSize (DpiUtils::scaled (200), 0);
     outlineDock->setVisible (false);
     mw->addDockWidget (Qt::LeftDockWidgetArea, outlineDock);
+
+    // 目录大纲切换浮动按钮（文档区域右上角）
+    outlineDockToggleBtn = new QPushButton (cw);
+    outlineDockToggleBtn->setObjectName ("outline-tab-collapse-btn");
+    outlineDockToggleBtn->setFocusPolicy (Qt::NoFocus);
+    outlineDockToggleBtn->setCursor (Qt::PointingHandCursor);
+    outlineDockToggleBtn->setIcon (QIcon (":llm-chat/addchat.svg"));
+    outlineDockToggleBtn->setIconSize (
+        QSize (DpiUtils::scaled (20), DpiUtils::scaled (20)));
+    outlineDockToggleBtn->setFixedSize (DpiUtils::scaled (40),
+                                        DpiUtils::scaled (40));
+    outlineDockToggleBtn->setStyleSheet (
+        QString ("QPushButton { border: none; border-radius: %1px; }")
+            .arg (DpiUtils::scaled (20)));
+    outlineDockToggleBtn->hide ();
+
+    // 使用独立的 Positioner 类处理按钮位置
+    class OutlineBtnPositioner : public QObject {
+    public:
+      OutlineBtnPositioner (QPushButton* btn, QWidget* parent,
+                            qt_tm_widget_rep* widget)
+          : QObject (parent), button_ (btn), parent_ (parent),
+            widget_ (widget) {}
+      bool eventFilter (QObject* obj, QEvent* event) override {
+        if (obj == parent_ && event->type () == QEvent::Resize) {
+          widget_->position_outline_dock_button ();
+        }
+        return QObject::eventFilter (obj, event);
+      }
+    private:
+      QPushButton*      button_;
+      QWidget*          parent_;
+      qt_tm_widget_rep* widget_;
+    };
+    cw->installEventFilter (
+        new OutlineBtnPositioner (outlineDockToggleBtn, cw, this));
+
+    QObject::connect (outlineDockToggleBtn, &QPushButton::clicked, [this] () {
+      bool show = !outlineDock->isVisible ();
+      set_outline_sidebar_visibility (this, show);
+    });
+
+    // 当用户点击 Dock X 按钮关闭时，显示浮动按钮
+    QObject::connect (outlineDock, &QDockWidget::visibilityChanged,
+                      [this] (bool visible) {
+      if (outlineDockToggleBtn) {
+        outlineDockToggleBtn->setVisible (!visible);
+      }
+    });
   }
 
   // FIXME? add DockWidgetClosable and connect the close signal
@@ -1243,6 +1293,21 @@ qt_tm_widget_rep::position_chat_sidebar_button () {
   int x= cwW - btnSize - rightMargin;
   int y= topMargin;
   chatSidebarToggleBtn->move (x, y);
+}
+
+void
+qt_tm_widget_rep::position_outline_dock_button () {
+  if (!outlineDockToggleBtn || !centralwidget ()) return;
+  QWidget* cw         = centralwidget ();
+  int      topMargin  = DpiUtils::scaled (12);
+  int      rightMargin= DpiUtils::scaled (70); // 左侧 offset，避免与 chat 按钮重叠
+  int      btnSize    = outlineDockToggleBtn->width ();
+  int      cwW        = cw->width ();
+  int      cwH        = cw->height ();
+  if (cwW <= 0 || cwH <= 0) return;
+  int x= cwW - btnSize - rightMargin;
+  int y= topMargin;
+  outlineDockToggleBtn->move (x, y);
 }
 
 /**
@@ -1694,6 +1759,14 @@ qt_tm_widget_rep::send (slot s, blackbox val) {
     chatSidebarModeMemory_= show;
     sync_chat_sidebar_mode ();
   } break;
+  case SLOT_OUTLINE_SIDEBAR_VISIBILITY: {
+    check_type<bool> (val, s);
+    bool show= open_box<bool> (val);
+    outlineDock->setVisible (show);
+    if (outlineDockToggleBtn) {
+      outlineDockToggleBtn->setVisible (!show);
+    }
+  } break;
   case SLOT_AUXILIARY_WIDGET: {
     check_type<string> (val, s);
     auxiliaryWidget->setWindowTitle (to_qstring (open_box<string> (val)));
@@ -1866,6 +1939,10 @@ qt_tm_widget_rep::query (slot s, int type_id) {
   case SLOT_CHAT_SIDEBAR_VISIBILITY:
     check_type_id<bool> (type_id, s);
     return close_box<bool> (chatSidebarMode);
+
+  case SLOT_OUTLINE_SIDEBAR_VISIBILITY:
+    check_type_id<bool> (type_id, s);
+    return close_box<bool> (outlineDock && outlineDock->isVisible ());
 
   case SLOT_INTERACTIVE_INPUT: {
     check_type_id<string> (type_id, s);
@@ -2399,6 +2476,7 @@ qt_tm_embedded_widget_rep::send (slot s, blackbox val) {
   case SLOT_TAB_PAGES_VISIBILITY:
   case SLOT_AUXILIARY_WIDGET_VISIBILITY:
   case SLOT_CHAT_SIDEBAR_VISIBILITY:
+  case SLOT_OUTLINE_SIDEBAR_VISIBILITY:
   case SLOT_NOTIFICATION_BAR:
   case SLOT_AUXILIARY_WIDGET:
   case SLOT_LEFT_FOOTER:
@@ -2460,6 +2538,7 @@ qt_tm_embedded_widget_rep::query (slot s, int type_id) {
   case SLOT_TAB_PAGES_VISIBILITY:
   case SLOT_AUXILIARY_WIDGET_VISIBILITY:
   case SLOT_CHAT_SIDEBAR_VISIBILITY:
+  case SLOT_OUTLINE_SIDEBAR_VISIBILITY:
     check_type_id<bool> (type_id, s);
     return close_box<bool> (false);
 

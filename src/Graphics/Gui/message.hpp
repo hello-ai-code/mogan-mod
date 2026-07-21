@@ -93,6 +93,7 @@ enum slot_id {
   SLOT_FILE,
   SLOT_DIRECTORY,
   SLOT_CHAT_SIDEBAR_VISIBILITY,
+  SLOT_OUTLINE_SIDEBAR_VISIBILITY,
 
   slot_id__LAST // Please leave last and don't assign integer values to members
 };
@@ -616,6 +617,16 @@ set_chat_sidebar_visibility (widget w, bool visible) {
 inline bool
 get_chat_sidebar_visibility (widget w) {
   return query<bool> (w, SLOT_CHAT_SIDEBAR_VISIBILITY);
+}
+
+inline void
+set_outline_sidebar_visibility (widget w, bool visible) {
+  send<bool> (w, SLOT_OUTLINE_SIDEBAR_VISIBILITY, visible);
+}
+
+inline bool
+get_outline_sidebar_visibility (widget w) {
+  return query<bool> (w, SLOT_OUTLINE_SIDEBAR_VISIBILITY);
 }
 
 inline void

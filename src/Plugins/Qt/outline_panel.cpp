@@ -13,7 +13,6 @@
 #include "new_document.hpp"
 #include "new_view.hpp"
 #include "path.hpp"
-#include "scheme.hpp"
 #include "tree.hpp"
 
 #include "qt_tm_widget.hpp"
@@ -24,15 +23,48 @@
 
 using namespace moebius;
 
-/* ------------------------------------------------------------------ */
-/*  Static members                                                    */
-/* ------------------------------------------------------------------ */
-hashset<tree_label> OutlinePanel::the_section_tags;
-bool OutlinePanel::section_tags_ready = false;
+/* ================================================================== */
+/*  Section-tag helpers (reuses same logic as tree_traverse.cpp's     */
+/*  search_sections / init_sections, but without the Scheme eval).    */
+/*  These mirror the section-tag-list + section*-tag-list from        */
+/*  TeXmacs/progs/text/text-drd.scm.                                 */
+/* ================================================================== */
 
-/* ------------------------------------------------------------------ */
+/**
+ * Whether @p tl is a known section label (part, chapter, section,
+ * subsection, … with or without the star suffix).
+ */
+static bool
+is_section_label (tree_label tl) {
+  return tl == make_tree_label ("part")         || tl == make_tree_label ("part*")
+      || tl == make_tree_label ("chapter")      || tl == make_tree_label ("chapter*")
+      || tl == make_tree_label ("section")      || tl == make_tree_label ("section*")
+      || tl == make_tree_label ("subsection")   || tl == make_tree_label ("subsection*")
+      || tl == make_tree_label ("subsubsection")|| tl == make_tree_label ("subsubsection*")
+      || tl == make_tree_label ("paragraph")    || tl == make_tree_label ("paragraph*")
+      || tl == make_tree_label ("subparagraph") || tl == make_tree_label ("subparagraph*");
+}
+
+/**
+ * Nesting level for a section label.
+ * Lower = higher in the hierarchy (1 ≅ part … 7 ≅ subparagraph).
+ */
+static int
+section_level (tree_label tl) {
+  if (tl == make_tree_label ("part")         || tl == make_tree_label ("part*"))         return 1;
+  if (tl == make_tree_label ("chapter")      || tl == make_tree_label ("chapter*"))      return 2;
+  if (tl == make_tree_label ("section")      || tl == make_tree_label ("section*"))      return 3;
+  if (tl == make_tree_label ("subsection")   || tl == make_tree_label ("subsection*"))   return 4;
+  if (tl == make_tree_label ("subsubsection")|| tl == make_tree_label ("subsubsection*"))return 5;
+  if (tl == make_tree_label ("paragraph")    || tl == make_tree_label ("paragraph*"))    return 6;
+  if (tl == make_tree_label ("subparagraph") || tl == make_tree_label ("subparagraph*")) return 7;
+  return 99;
+}
+
+/* ================================================================== */
 /*  Construction / Destruction                                        */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+
 OutlinePanel::OutlinePanel (qt_tm_widget_rep* parentWidget, QWidget* parent)
     : QDockWidget ("目录", parent), m_parentWidget (parentWidget) {
   setObjectName ("outlineDock");
@@ -66,33 +98,39 @@ OutlinePanel::~OutlinePanel () {
   // owned by Qt parent hierarchy
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 /*  Slot: toggle visibility                                           */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+
 void
 OutlinePanel::toggleVisibility () {
   setVisible (!isVisible ());
 }
 
-/* ------------------------------------------------------------------ */
-/*  Slot: trigger a deferred refresh                                  */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Slot: rebuild the outline from the current document               */
+/* ================================================================== */
+
 void
 OutlinePanel::refresh () {
   m_refreshTimer->stop ();
 
-  ensureSectionTags ();
-
   tree doc = the_et; // defined in new_document.hpp
   if (is_atomic (doc)) return;
 
+  // --- Pass 1: flat collection ---
+  QVector<SectionEntry> entries;
+  collectSections (doc, path (), entries);
+
+  // --- Pass 2: rebuild tree widget with hierarchy ---
   m_tree->clear ();
-  collectOutline (doc, path (), m_tree->invisibleRootItem ());
+  buildOutlineTree (entries);
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 /*  Slot: click handler — navigate to section                         */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+
 void
 OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   QVariant data = item->data (0, Qt::UserRole);
@@ -106,45 +144,25 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Ensure section-tag set is populated from Scheme (one-shot)        */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Recursive collection (depth-first) of all section nodes.          */
+/*                                                                     */
+/*  Reuses the same traversal pattern as search_sections() — walks    */
+/*  the tree, recognises section nodes by their tree_label, records   */
+/*  the tree path for navigation, and does NOT recurse into section   */
+/*  children (subsections are siblings, not children, in TeXmacs).    */
+/* ================================================================== */
+
 void
-OutlinePanel::ensureSectionTags () {
-  if (section_tags_ready) return;
-
-  // Mirrors init_sections() in tree_traverse.cpp.
-  // Note: we deliberately use a flat list (append of plain + star lists)
-  // so that ensureSectionTags() stays in sync with the existing Scheme-side
-  // tag configuration.
-  eval ("(use-modules (text text-drd))");
-  object l = eval ("(append (section-tag-list) (section*-tag-list))");
-
-  while (!is_null (l)) {
-    tree_label tl = as_tree_label (as_symbol (car (l)));
-    if (tl != UNKNOWN) {
-      the_section_tags->insert (tl);
-    }
-    l = cdr (l);
-  }
-  section_tags_ready = true;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Recursive collection of sections (flat tree, depth-first order)   */
-/*  TeXmacs sections are tree siblings, so the tree view is flat.     */
-/*  (Hierarchical nesting via section-tag level is left for a future  */
-/*   enhancement when a label→string API is available.)               */
-/* ------------------------------------------------------------------ */
-void
-OutlinePanel::collectOutline (const tree& t, path base,
-                              QTreeWidgetItem* parent) {
+OutlinePanel::collectSections (const tree& t, path base,
+                               QVector<SectionEntry>& entries) {
   if (is_atomic (t)) return;
 
   int n = N (t);
 
-  // Section-like node: has >=1 child and its label is a known section tag.
-  if (n >= 1 && the_section_tags->contains (L (t))) {
+  // Section-like node: has >= 1 child and is a known section label.
+  tree_label label = L (t);
+  if (n >= 1 && is_section_label (label)) {
 
     // Extract the section title from child 0 (the title subtree).
     string title_text;
@@ -155,25 +173,72 @@ OutlinePanel::collectOutline (const tree& t, path base,
     }
 
     if (N (title_text) > 0) {
-      QTreeWidgetItem* item = new QTreeWidgetItem (parent);
-      item->setText (0, QString::fromUtf8 (title_text.c_str ()));
-      item->setData (0, Qt::UserRole, QVariant (pathToString (base)));
+      entries.append ({ base, section_level (label), title_text });
     }
-    // Do NOT recurse into section children — body content may contain
-    // other trees but subsections are siblings in the document tree,
-    // not children.
+    // Do NOT recurse into section children — subsections are siblings
+    // at the document level, not children of this node.
     return;
   }
 
   // Non-section container — recurse into every child.
   for (int i = 0; i < n; ++i) {
-    collectOutline (t[i], base * i, parent);
+    collectSections (t[i], base * i, entries);
   }
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Build QTreeWidget hierarchy from a flat list of SectionEntry.     */
+/*                                                                     */
+/*  Algorithm (mirrors the Scheme section-list->nested logic):        */
+/*    - Maintain a stack of the most recent QTreeWidgetItem at each   */
+/*      nesting level.                                                */
+/*    - For a section at level L, its parent is stack[L-1] (the       */
+/*      nearest ancestor section at a higher level).                  */
+/*    - stack[L] is then set to the new item, and deeper entries in   */
+/*      the stack are cleared (they are siblings of the new item's    */
+/*      children, not ancestors).                                     */
+/* ================================================================== */
+
+void
+OutlinePanel::buildOutlineTree (const QVector<SectionEntry>& entries) {
+  // stack[lvl] = parent QTreeWidgetItem for level lvl
+  // Index 0 is unused (levels start at 1).
+  const int MAX_LEVEL = 8;
+  QTreeWidgetItem* stack[MAX_LEVEL] = { nullptr };
+
+  for (const auto& entry : entries) {
+    QTreeWidgetItem* item = new QTreeWidgetItem;
+    item->setText (0, QString::fromUtf8 (entry.title.c_str ()));
+    item->setData (0, Qt::UserRole, QVariant (pathToString (entry.p)));
+
+    int lvl = entry.level;
+    QTreeWidgetItem* parent = (lvl > 1 && lvl < MAX_LEVEL)
+                                  ? stack[lvl - 1] : nullptr;
+
+    if (parent != nullptr) {
+      parent->addChild (item);
+    } else {
+      m_tree->addTopLevelItem (item);
+    }
+
+    // Record this item as the most recent at this level, then clear
+    // any deeper levels (they are no longer valid descendants).
+    if (lvl < MAX_LEVEL) {
+      stack[lvl] = item;
+      for (int i = lvl + 1; i < MAX_LEVEL; ++i) {
+        stack[i] = nullptr;
+      }
+    }
+  }
+
+  // Expand all items so the user sees the full TOC immediately.
+  m_tree->expandAll ();
+}
+
+/* ================================================================== */
 /*  Path serialisation                                                */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+
 QString
 OutlinePanel::pathToString (const path& p) {
   QStringList parts;

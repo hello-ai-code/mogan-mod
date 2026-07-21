@@ -99,6 +99,7 @@ class qt_tm_widget_rep : public qt_window_widget_rep {
   QPushButton*            loginActionButton;
   QPushButton*            logoutButton;
   QPushButton* chatSidebarToggleBtn; ///< 文档区域右上角的新建对话浮动按钮
+  QPushButton* outlineDockToggleBtn; ///< 文档区域右上角的目录大纲切换浮动按钮
 
   // 更新提示区域控件
   QWidget*     m_updateSection     = nullptr;
@@ -161,6 +162,7 @@ private:
   void logout ();
   void sync_chat_sidebar_mode ();
   void position_chat_sidebar_button ();
+  void position_outline_dock_button ();
   void set_central_widget_updates_frozen (bool frozen);
 
   // Version update notification

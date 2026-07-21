@@ -132,6 +132,14 @@
   ) ;when
 ) ;tm-define
 
+(tm-define (toggle-outline-sidebar)
+  (:synopsis "Toggle the visibility of the outline sidebar")
+  (:check-mark "v" visible-outline-sidebar?)
+  (with val (not (visible-outline-sidebar?))
+    (show-outline-sidebar val)
+  ) ;with
+) ;tm-define
+
 (tm-define (toggle-visible-side-tools n)
   (:synopsis "Toggle the visibility of the @n-th side tools")
   (:check-mark "v" has-side-tools?)
