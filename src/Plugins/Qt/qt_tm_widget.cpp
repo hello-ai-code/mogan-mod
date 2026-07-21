@@ -48,6 +48,7 @@
 #include "qt_picture.hpp"
 #include "qt_renderer.hpp"
 #include "qt_tm_widget.hpp"
+#include "outline_panel.hpp"
 #include "qt_utilities.hpp"
 
 bool in_presentation_mode ();
@@ -883,6 +884,20 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
       chatSidebarModeMemory_= chatSidebarMode;
       sync_chat_sidebar_mode ();
     });
+  }
+
+  // 目录大纲导航 Dock（OutlinePanel 是 QDockWidget，无需额外包装）
+  {
+    outlineDock = new OutlinePanel (this, mw);
+    outlineDock->setObjectName ("outlineDock");
+    outlineDock->setAllowedAreas (Qt::LeftDockWidgetArea);
+    outlineDock->setFeatures (QDockWidget::DockWidgetMovable |
+                              QDockWidget::DockWidgetFloatable |
+                              QDockWidget::DockWidgetClosable);
+    outlineDock->setFloating (false);
+    outlineDock->setMinimumSize (DpiUtils::scaled (200), 0);
+    outlineDock->setVisible (false);
+    mw->addDockWidget (Qt::LeftDockWidgetArea, outlineDock);
   }
 
   // FIXME? add DockWidgetClosable and connect the close signal
