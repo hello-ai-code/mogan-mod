@@ -142,4 +142,3 @@ void get_preferred_position (string name, SI& xx, SI& yy);
 void get_preferred_size (string name, SI& ww, SI& hh);
 
 #endif // defined TM_WINDOW_H
-WINDOW_H
