@@ -246,6 +246,14 @@ tm_frame_rep::show_chat_sidebar (bool flag) {
 }
 
 void
+tm_frame_rep::show_outline_sidebar (bool flag) {
+  if (!has_current_view ()) return;
+  tm_window win= has_current_window () ? concrete_window ()
+                                       : concrete_window (windows_list ()[0]);
+  win->set_outline_sidebar_flag (flag);
+}
+
+void
 tm_frame_rep::show_footer (bool flag) {
   if (!has_current_view ()) return;
   concrete_window ()->set_footer_flag (flag);
