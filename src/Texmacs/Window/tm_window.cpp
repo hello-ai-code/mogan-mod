@@ -534,6 +534,11 @@ tm_window_rep::set_chat_sidebar_flag (bool flag) {
   set_chat_sidebar_visibility (wid, flag);
 }
 
+void
+tm_window_rep::set_outline_sidebar_flag (bool flag) {
+  set_outline_sidebar_visibility (wid, flag);
+}
+
 bool
 tm_window_rep::get_header_flag () {
   return get_header_visibility (wid);
@@ -571,6 +576,11 @@ tm_window_rep::get_bottom_tools_flag (int which) {
 bool
 tm_window_rep::get_chat_sidebar_flag () {
   return get_chat_sidebar_visibility (wid);
+}
+
+bool
+tm_window_rep::get_outline_sidebar_flag () {
+  return get_outline_sidebar_visibility (wid);
 }
 
 /******************************************************************************

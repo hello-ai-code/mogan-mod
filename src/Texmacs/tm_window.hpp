@@ -69,6 +69,7 @@ public:
   bool get_side_tools_flag (int which);
   bool get_bottom_tools_flag (int which);
   bool get_chat_sidebar_flag ();
+  bool get_outline_sidebar_flag ();
 
   double get_window_zoom_factor ();
   void   set_window_zoom_factor (double zoom);
@@ -140,3 +141,4 @@ void get_preferred_position (string name, SI& xx, SI& yy);
 void get_preferred_size (string name, SI& ww, SI& hh);
 
 #endif // defined TM_WINDOW_H
+WINDOW_H

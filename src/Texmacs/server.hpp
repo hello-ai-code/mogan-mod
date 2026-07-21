@@ -61,12 +61,14 @@ public:
   virtual url  get_auxiliary_widget_parent_url ()      = 0;
   virtual void show_bottom_tools (int which, bool flag)= 0;
   virtual void show_chat_sidebar (bool flag)           = 0;
+  virtual void show_outline_sidebar (bool flag)        = 0;
   virtual bool auxiliary_widget_visible ()             = 0;
   virtual bool visible_header ()                       = 0;
   virtual bool visible_icon_bar (int which)            = 0;
   virtual bool visible_side_tools (int which)          = 0;
   virtual bool visible_bottom_tools (int which)        = 0;
   virtual bool visible_chat_sidebar ()                 = 0;
+  virtual bool visible_outline_sidebar ()              = 0;
   virtual void menu_widget (string menu, widget& w)    = 0;
   virtual void menu_main (string menu)                 = 0;
   virtual void menu_icons (int which, string menu)     = 0;

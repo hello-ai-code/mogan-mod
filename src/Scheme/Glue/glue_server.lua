@@ -226,8 +226,21 @@ function main()
                 }
             },
             {
+                scm_name = "show-outline-sidebar",
+                cpp_name = "show_outline_sidebar",
+                ret_type = "void",
+                arg_list = {
+                    "bool"
+                }
+            },
+            {
                 scm_name = "visible-chat-sidebar?",
                 cpp_name = "visible_chat_sidebar",
+                ret_type = "bool"
+            },
+            {
+                scm_name = "visible-outline-sidebar?",
+                cpp_name = "visible_outline_sidebar",
                 ret_type = "bool"
             },
             {
