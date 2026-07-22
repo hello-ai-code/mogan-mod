@@ -141,6 +141,7 @@ public:
   editor_rep (server_rep* sv, tm_buffer buf);
   virtual ~editor_rep () {}
   bool is_current_editor ();
+  path get_root_path () const { return rp; }
 
   /* public routines from edit_interface */
   virtual void      suspend ()                                             = 0;

@@ -245,7 +245,7 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   if (!is_nil (ed)) {
     // The path was collected relative to ed->the_buffer(); prepend rp
     // so it becomes an absolute path in et for go_to().
-    ed->go_to (ed->rp / bufferRel);
+    ed->go_to (ed->get_root_path () / bufferRel);
   }
 }
 
