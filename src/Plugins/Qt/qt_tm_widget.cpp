@@ -937,15 +937,31 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
         new OutlineBtnPositioner (outlineDockToggleBtn, cw, this));
 
     QObject::connect (outlineDockToggleBtn, &QPushButton::clicked, [this] () {
-      bool show = !outlineDock->isVisible ();
-      set_outline_sidebar_visibility (this, show);
+      if (outlineDock->isVisible ()) {
+        // If visible, toggle compact mode (collapse to narrow strip or expand)
+        outlineDock->toggleCompactMode ();
+        // Update button visibility based on compact state
+        outlineDockToggleBtn->setVisible (outlineDock->isCompactMode ());
+      } else {
+        // If hidden, show the dock in normal mode
+        set_outline_sidebar_visibility (this, true);
+      }
     });
 
     // 当用户点击 Dock X 按钮关闭时，显示浮动按钮
     QObject::connect (outlineDock, &QDockWidget::visibilityChanged,
                       [this] (bool visible) {
       if (outlineDockToggleBtn) {
-        outlineDockToggleBtn->setVisible (!visible);
+        // In compact mode, button is visible when dock is visible
+        // In normal mode, button is visible when dock is hidden
+        if (visible && !outlineDock->isCompactMode ()) {
+          outlineDockToggleBtn->setVisible (false);
+        } else if (!visible) {
+          outlineDockToggleBtn->setVisible (true);
+        } else {
+          // Visible and in compact mode - show the toggle button
+          outlineDockToggleBtn->setVisible (true);
+        }
       }
     });
   }

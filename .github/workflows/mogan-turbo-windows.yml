@@ -96,7 +96,6 @@ jobs:
       - name: Configure
         run: |
           xmake config --yes -vD -m release `
-            --startup_tab=false `
             --text_toolbar=false `
             --tutorial=false `
             --debug_with_timestamp=false

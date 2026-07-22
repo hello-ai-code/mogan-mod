@@ -45,15 +45,18 @@ public:
   OutlinePanel (qt_tm_widget_rep* parentWidget, QWidget* parent = nullptr);
   ~OutlinePanel ();
 
-public slots:
-  /** Rebuild the outline tree from the current document. */
-  void refresh ();
-
   /** Toggle visibility (show/hide). */
   void toggleVisibility ();
 
-private slots:
-  void onItemClicked (QTreeWidgetItem* item, int column);
+  /** Toggle narrow strip mode for compact usage */
+  void toggleCompactMode ();
+
+  /** Check if in narrow strip mode */
+  bool isCompactMode () const;
+
+public slots:
+  /** Rebuild the outline tree from the current document. */
+  void refresh ();
 
 private:
   /** One collected section entry. */
@@ -67,6 +70,9 @@ private:
   void collectSections (tree t, path base,
                         QVector<SectionEntry>& entries);
 
+  /** Extract a safe section title, filtering out magic-paste artifacts */
+  static string extract_section_title (tree t);
+
   /** Serialize a path to a comma-separated string for QVariant storage. */
   static QString pathToString (path p);
 
@@ -79,6 +85,13 @@ private:
   qt_tm_widget_rep* m_parentWidget;
   QTreeWidget* m_tree;
   QTimer* m_refreshTimer;
+
+  /** Constants for compact mode dimensions */
+  static constexpr int COMPACT_WIDTH = 50;   // narrow strip width
+  static constexpr int NORMAL_WIDTH = 200;   // normal width
+
+  /** Current compact mode state */
+  bool m_compactMode{false};
 };
 
 #endif // OUTLINE_PANEL_HPP

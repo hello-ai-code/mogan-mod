@@ -21,6 +21,7 @@
 #include <QHeaderView>
 #include <QStringList>
 #include <QString>
+#include <QSettings>
 
 using namespace moebius;
 
@@ -63,6 +64,64 @@ section_level (tree_label tl) {
 }
 
 /* ================================================================== */
+/*  Helper: check if a string consists only of digits                 */
+/* ================================================================== */
+
+static bool
+is_all_digits (const string& s) {
+  if (N (s) == 0) return false;
+  for (int i = 0; i < N (s); ++i) {
+    char c = s[i];
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
+/* ================================================================== */
+/*  Helper: check if a string is of the form "<digits>"               */
+/* ================================================================== */
+
+static bool
+is_angle_bracket_digits (const string& s) {
+  if (N (s) < 3) return false;
+  if (s[0] != '<' || s[N (s) - 1] != '>') return false;
+  for (int i = 1; i < N (s) - 1; ++i) {
+    char c = s[i];
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
+/* ================================================================== */
+/*  Helper: extract a safe section title, filtering out artifacts     */
+/* ================================================================== */
+
+static string
+extract_section_title (tree t) {
+  if (N (t) == 0) return string ();
+
+  // Try to get the first child as the title
+  tree title_child = t[0];
+
+  // Case 1: atomic (simple text) - use as_string
+  if (is_atomic (title_child)) {
+    string text = as_string (tree (title_child));
+    // Filter out pure digits or "<digits>" (magic paste artifacts)
+    if (is_all_digits (text) || is_angle_bracket_digits (text)) {
+      return string (); // invalid title, skip this section
+    }
+    return text;
+  }
+
+  // Case 2: compound tree - use as_string which flattens markup
+  string text = as_string (title_child);
+  if (is_all_digits (text) || is_angle_bracket_digits (text)) {
+    return string ();
+  }
+  return text;
+}
+
+/* ================================================================== */
 /*  Construction / Destruction                                        */
 /* ================================================================== */
 
@@ -93,6 +152,16 @@ OutlinePanel::OutlinePanel (qt_tm_widget_rep* parentWidget, QWidget* parent)
 
   // kick off first refresh when the Scheme VM is warm
   QTimer::singleShot (2000, this, SLOT (refresh ()));
+
+  // Load compact mode state from settings
+  QSettings settings;
+  m_compactMode = settings.value ("OutlinePanel/compactMode", false).toBool ();
+  if (m_compactMode) {
+    setMinimumWidth (COMPACT_WIDTH);
+    setMaximumWidth (COMPACT_WIDTH);
+    // Hide the tree widget to save resources
+    if (m_tree) m_tree->setVisible (false);
+  }
 }
 
 OutlinePanel::~OutlinePanel () {
@@ -106,6 +175,37 @@ OutlinePanel::~OutlinePanel () {
 void
 OutlinePanel::toggleVisibility () {
   setVisible (!isVisible ());
+}
+
+/* ================================================================== */
+/*  Toggle compact mode (narrow strip <-> normal width)               */
+/* ================================================================== */
+
+void
+OutlinePanel::toggleCompactMode () {
+  m_compactMode = !m_compactMode;
+
+  if (m_compactMode) {
+    // Collapse to narrow strip
+    setMinimumWidth (COMPACT_WIDTH);
+    setMaximumWidth (COMPACT_WIDTH);
+    // Hide the tree widget to save resources
+    if (m_tree) m_tree->setVisible (false);
+  } else {
+    // Expand to normal width
+    setMinimumWidth (NORMAL_WIDTH);
+    setMaximumWidth (QWIDGETSIZE_MAX);
+    if (m_tree) m_tree->setVisible (true);
+  }
+
+  // Persist state
+  QSettings settings;
+  settings.setValue ("OutlinePanel/compactMode", m_compactMode);
+}
+
+bool
+OutlinePanel::isCompactMode () const {
+  return m_compactMode;
 }
 
 /* ================================================================== */
@@ -165,15 +265,10 @@ OutlinePanel::collectSections (tree t, path base,
   tree_label label = L (t);
   if (n >= 1 && is_section_label (label)) {
 
-    // Extract the section title from child 0 (the title subtree).
-    string title_text;
-    if (is_atomic (t[0])) {
-      title_text = as_string (tree (t[0]));
-    } else {
-      title_text = as_string (t[0]); // flattens markup
-    }
+    // Extract the section title using safe extraction
+    string title_text = extract_section_title (t);
 
-    if (N (title_text) > 0) {
+    if (!title_text.empty ()) {
       entries.append ({ base, section_level (label), title_text });
     }
     // Do NOT recurse into section children — subsections are siblings
