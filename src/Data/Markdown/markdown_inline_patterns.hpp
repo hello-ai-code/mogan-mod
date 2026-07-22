@@ -110,7 +110,7 @@ parse_emphasis (string s, int start, int end) {
     return tree ("em", 1) << content;
 }
 
-/* Parse `code` → code/verbatim node */
+/* Parse code (backtick) -> code/verbatim node */
 static tree
 parse_inline_code (string s, int start, int end) {
     string content = s (start + 1, end - 1);
@@ -249,7 +249,7 @@ try_parse_inline_markdown (string s) {
             }
         }
         
-        /* 3. Inline code: `...` */
+        /* 3. Inline code: backtick-delimited */
         if (is_empty (pattern_type) && s[pos] == '`') {
             int end = find_closing_marker (s, pos, "`", "`");
             if (end != -1 && end > pos + 1) {
@@ -356,7 +356,7 @@ try_parse_inline_markdown (string s) {
  * Returns true only if every opening marker has a matching closer,
  * respecting escape sequences and counting only non-escaped markers.
  *
- * Detects: ** */ *` ~~ [ ] ( )  (but NOT the text content between them).
+ * Detects: **, *, ~~, backtick, [](), ![]()  (but NOT the text content between them).
  * This is a simple stack-free validator that's still much more accurate
  * than character counting.  It does NOT detect nested mis-pairing
  * (e.g. **bold*italic**), which is fine because such nested cases are
@@ -417,8 +417,8 @@ is_complete_markdown_input (string s) {
         if (depth != 0) return false;
     }
 
-    /* --- Inline code: `...` --- */
-    /* Backticks must be even-count. Multi-backtick fences (`````) not handled
+    /* --- Inline code: backtick-based --- */
+    /* Backticks must be even-count. Multi-backtick fences not handled
        here since markdown_input only triggers on single-line CONCAT content. */
     {
         int depth = 0;
