@@ -85,7 +85,7 @@
 
 (tm-define (cpp-markdown-document->texmacs s)
   (:synopsis "Convert Markdown document string to full TeXmacs tree")
-  (with r (markdown-to-tree s)
+  (with r (markdown-document-to-tree s)
     (if (and r (not (tree-is? r 'error)))
         r
         (stree->tree '(error "bad format or data"))))

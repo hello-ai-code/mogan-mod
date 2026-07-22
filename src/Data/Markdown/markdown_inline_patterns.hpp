@@ -351,26 +351,134 @@ try_parse_inline_markdown (string s) {
     return result;
 }
 
-/* Simplified version that only checks if input is complete markdown */
+/* Check if all Markdown markers are properly paired.
+ *
+ * Returns true only if every opening marker has a matching closer,
+ * respecting escape sequences and counting only non-escaped markers.
+ *
+ * Detects: ** */ *` ~~ [ ] ( )  (but NOT the text content between them).
+ * This is a simple stack-free validator that's still much more accurate
+ * than character counting.  It does NOT detect nested mis-pairing
+ * (e.g. **bold*italic**), which is fine because such nested cases are
+ * semantically ambiguous and the parse step handles them correctly anyway.
+ */
 static inline bool
 is_complete_markdown_input (string s) {
-    /* Quick heuristic: check for unclosed markers */
-    int asterisk_count = 0;
-    int backtick_count = 0;
-    int tilde_count = 0;
-    
-    for (int i = 0; i < N (s); i++) {
-        if (s[i] == '*') asterisk_count++;
-        if (s[i] == '`') backtick_count++;
-        if (s[i] == '~') tilde_count++;
+    int n = N (s);
+
+    /* --- Strong: **...** --- */
+    /* Scan for unclosed ** */
+    {
+        int depth = 0;
+        int i = 0;
+        while (i < n) {
+            if (s[i] == '\\') { i += 2; continue; }
+            if (i + 1 < n && s[i] == '*' && s[i+1] == '*') {
+                depth = 1 - depth;  /* toggle on each complete ** */
+                i += 2;
+            } else {
+                i++;
+            }
+        }
+        if (depth != 0) return false;
     }
-    
-    /* Single * or ~ usually indicates incomplete input */
-    if (asterisk_count == 1 || tilde_count == 1) return false;
-    
-    /* Backticks must be even */
-    if (backtick_count % 2 != 0) return false;
-    
+
+    /* --- Emphasis: *...* (single) --- */
+    /* Count only non-** single *, toggling on each isolated asterisk */
+    {
+        int depth = 0;
+        int i = 0;
+        while (i < n) {
+            if (s[i] == '\\') { i += 2; continue; }
+            if (i + 1 < n && s[i] == '*' && s[i+1] == '*') { i += 2; continue; }
+            if (s[i] == '*') {
+                depth = 1 - depth;
+                i++;
+            } else {
+                i++;
+            }
+        }
+        if (depth != 0) return false;
+    }
+
+    /* --- Strikeout: ~~...~~ --- */
+    {
+        int depth = 0;
+        int i = 0;
+        while (i < n) {
+            if (s[i] == '\\') { i += 2; continue; }
+            if (i + 1 < n && s[i] == '~' && s[i+1] == '~') {
+                depth = 1 - depth;
+                i += 2;
+            } else {
+                i++;
+            }
+        }
+        if (depth != 0) return false;
+    }
+
+    /* --- Inline code: `...` --- */
+    /* Backticks must be even-count. Multi-backtick fences (`````) not handled
+       here since markdown_input only triggers on single-line CONCAT content. */
+    {
+        int depth = 0;
+        int i = 0;
+        while (i < n) {
+            if (s[i] == '\\') { i += 2; continue; }
+            if (s[i] == '`' && (i + 1 >= n || s[i+1] != '`')) {
+                depth = 1 - depth;
+                i++;
+            } else if (s[i] == '`' && i + 1 < n && s[i+1] == '`') {
+                /* double backtick → skip both, no toggle */
+                i += 2;
+            } else {
+                i++;
+            }
+        }
+        if (depth != 0) return false;
+    }
+
+    /* --- Link: [...] and image: ![alt]... must have matching [ and ] --- */
+    {
+        int depth = 0;
+        int i = 0;
+        while (i < n) {
+            if (s[i] == '\\') { i += 2; continue; }
+            if (i + 1 < n && s[i] == '!' && s[i+1] == '[') {
+                depth++;
+                i += 2;
+            } else if (s[i] == '[') {
+                depth++;
+                i++;
+            } else if (s[i] == ']') {
+                depth--;
+                if (depth < 0) return false;  /* unmatched ] */
+                /* Check for following (…) — if missing, the link is incomplete */
+                i++;
+                if (i + 1 < n && s[i] == '(') {
+                    /* find closing ) */
+                    int j = i + 1;
+                    int paren_depth = 1;
+                    while (j < n && paren_depth > 0) {
+                        if (s[j] == '\\') { j += 2; continue; }
+                        if (s[j] == '(') paren_depth++;
+                        if (s[j] == ')') paren_depth--;
+                        if (paren_depth > 0) j++;
+                    }
+                    if (paren_depth != 0) return false;  /* unclosed (...) */
+                    i = j;  /* skip past ) */
+                } else {
+                    /* No ( after ] — could be reference-style link;
+                     * for B.4 we only support [text](url), so flag incomplete. */
+                    return false;
+                }
+            } else {
+                i++;
+            }
+        }
+        if (depth != 0) return false;
+    }
+
     return true;
 }
 

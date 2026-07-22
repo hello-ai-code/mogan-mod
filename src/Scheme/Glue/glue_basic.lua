@@ -1994,6 +1994,14 @@ function main()
                     "string"
                 }
             },
+            {
+                scm_name = "markdown-document-to-tree",
+                cpp_name = "markdown_document_to_tree",
+                ret_type = "tree",
+                arg_list = {
+                    "string"
+                }
+            },
         }
     }
 end
