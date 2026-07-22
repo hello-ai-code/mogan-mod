@@ -22,6 +22,7 @@
 #include <QStringList>
 #include <QString>
 #include <QSettings>
+#include <cstdio>
 
 using namespace moebius;
 
@@ -38,13 +39,19 @@ using namespace moebius;
  */
 static bool
 is_section_label (tree_label tl) {
-  return tl == make_tree_label ("part")         || tl == make_tree_label ("part*")
+  bool result = tl == make_tree_label ("part")         || tl == make_tree_label ("part*")
       || tl == make_tree_label ("chapter")      || tl == make_tree_label ("chapter*")
       || tl == make_tree_label ("section")      || tl == make_tree_label ("section*")
       || tl == make_tree_label ("subsection")   || tl == make_tree_label ("subsection*")
       || tl == make_tree_label ("subsubsection")|| tl == make_tree_label ("subsubsection*")
       || tl == make_tree_label ("paragraph")    || tl == make_tree_label ("paragraph*")
       || tl == make_tree_label ("subparagraph") || tl == make_tree_label ("subparagraph*");
+
+  if (result) {
+    fprintf (stderr, "[OutlinePanel DEBUG] is_section_label: %s -> TRUE\n", as_charp (tl));
+  }
+
+  return result;
 }
 
 /**
@@ -221,9 +228,15 @@ OutlinePanel::refresh () {
   tree doc = ed->the_buffer (); // current document tree, not global the_et
   if (is_atomic (doc)) return;
 
+  // DEBUG: print document root label and structure
+  fprintf (stderr, "[OutlinePanel DEBUG] Document root label: %s (atomic=%d)\n",
+           as_charp (L (doc)), is_atomic (doc));
+
   // --- Pass 1: flat collection ---
   QVector<SectionEntry> entries;
   collectSections (doc, path (), entries);
+
+  fprintf (stderr, "[OutlinePanel DEBUG] Collected %d sections\n", entries.size ());
 
   // --- Pass 2: rebuild tree widget with hierarchy ---
   m_tree->clear ();
@@ -267,10 +280,21 @@ OutlinePanel::collectSections (tree t, path base,
 
   // Section-like node: has >= 1 child and is a known section label.
   tree_label label = L (t);
+
+  // DEBUG: print every compound node
+  static int depth = 0;
+  depth++;
+  fprintf (stderr, "[OutlinePanel DEBUG] depth=%d, label=%s, n=%d\n",
+           depth, as_charp (label), n);
+  depth--;
+
   if (n >= 1 && is_section_label (label)) {
 
     // Extract the section title using safe extraction
     string title_text = extract_section_title (t);
+
+    fprintf (stderr, "[OutlinePanel DEBUG]   -> SECTION: title='%s', n_title=%d\n",
+             as_charp (title_text), N (title_text));
 
     if (N (title_text) != 0) {
       entries.append ({ base, section_level (label), title_text });
