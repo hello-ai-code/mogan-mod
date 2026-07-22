@@ -96,8 +96,8 @@ is_angle_bracket_digits (string s) {
 /*  Helper: extract a safe section title, filtering out artifacts     */
 /* ================================================================== */
 
-static string
-extract_section_title (tree t) {
+string
+OutlinePanel::extract_section_title (tree t) {
   if (N (t) == 0) return string ();
 
   // Try to get the first child as the title
