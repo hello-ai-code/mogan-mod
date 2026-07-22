@@ -68,7 +68,7 @@ section_level (tree_label tl) {
 /* ================================================================== */
 
 static bool
-is_all_digits (const string& s) {
+is_all_digits (string s) {
   if (N (s) == 0) return false;
   for (int i = 0; i < N (s); ++i) {
     char c = s[i];
@@ -82,7 +82,7 @@ is_all_digits (const string& s) {
 /* ================================================================== */
 
 static bool
-is_angle_bracket_digits (const string& s) {
+is_angle_bracket_digits (string s) {
   if (N (s) < 3) return false;
   if (s[0] != '<' || s[N (s) - 1] != '>') return false;
   for (int i = 1; i < N (s) - 1; ++i) {
@@ -268,7 +268,7 @@ OutlinePanel::collectSections (tree t, path base,
     // Extract the section title using safe extraction
     string title_text = extract_section_title (t);
 
-    if (!title_text.empty ()) {
+    if (N (title_text) != 0) {
       entries.append ({ base, section_level (label), title_text });
     }
     // Do NOT recurse into section children — subsections are siblings

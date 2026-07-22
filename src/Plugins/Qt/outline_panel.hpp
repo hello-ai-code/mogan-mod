@@ -58,6 +58,9 @@ public slots:
   /** Rebuild the outline tree from the current document. */
   void refresh ();
 
+  /** Navigate to the section when an item is clicked. */
+  void onItemClicked (QTreeWidgetItem* item, int column);
+
 private:
   /** One collected section entry. */
   struct SectionEntry {
