@@ -216,7 +216,9 @@ void
 OutlinePanel::refresh () {
   m_refreshTimer->stop ();
 
-  tree doc = the_et; // defined in new_document.hpp
+  editor ed = get_current_editor ();
+  if (is_nil (ed)) return;
+  tree doc = ed->the_buffer (); // current document tree, not global the_et
   if (is_atomic (doc)) return;
 
   // --- Pass 1: flat collection ---
@@ -237,11 +239,13 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   QVariant data = item->data (0, Qt::UserRole);
   if (data.isNull ()) return;
 
-  path p = stringToPath (data.toString ());
+  path bufferRel = stringToPath (data.toString ());
 
   editor ed = get_current_editor ();
   if (!is_nil (ed)) {
-    ed->go_to (p);
+    // The path was collected relative to ed->the_buffer(); prepend rp
+    // so it becomes an absolute path in et for go_to().
+    ed->go_to (ed->rp / bufferRel);
   }
 }
 
