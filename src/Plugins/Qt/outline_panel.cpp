@@ -16,8 +16,10 @@
 #include "tree.hpp"
 #include "tree_helper.hpp"
 #include "editor.hpp"
+#include "converter.hpp"
 
 #include "qt_tm_widget.hpp"
+#include "qt_utilities.hpp"
 
 #include <QHeaderView>
 #include <QStringList>
@@ -47,11 +49,6 @@ is_section_label (tree_label tl) {
       || tl == make_tree_label ("subsubsection")|| tl == make_tree_label ("subsubsection*")
       || tl == make_tree_label ("paragraph")    || tl == make_tree_label ("paragraph*")
       || tl == make_tree_label ("subparagraph") || tl == make_tree_label ("subparagraph*");
-
-  if (result) {
-    fprintf (stderr, "[OutlinePanel DEBUG] is_section_label: %s -> TRUE\n",
-             as_charp (as_string (tl)));
-  }
 
   return result;
 }
@@ -265,16 +262,12 @@ OutlinePanel::refresh () {
     return;
   }
 
-  // DEBUG: print document root label and structure
-  fprintf (stderr, "[OutlinePanel DEBUG] Document root label: %s (atomic=%d)\n",
-           as_charp (as_string (L (doc))), is_atomic (doc));
-
   // --- Pass 1: flat collection ---
+  // Collect with ABSOLUTE paths (base = the document root in et), so the
+  // stored path can be passed straight to go_to() on click.  This mirrors
+  // the focus-menu behaviour: (tree->path s) then (go-to p).
   QVector<SectionEntry> entries;
-  collectSections (doc, path (), entries);
-
-  fprintf (stderr, "[OutlinePanel DEBUG] Collected %d sections\n",
-           (int) entries.size ());
+  collectSections (doc, ed->get_root_path (), entries);
 
   // --- Pass 2: rebuild tree widget with hierarchy ---
   m_tree->clear ();
@@ -293,7 +286,7 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   QVariant data = item->data (0, Qt::UserRole);
   if (data.isNull ()) return;
 
-  path bufferRel = stringToPath (data.toString ());
+  path absPath = stringToPath (data.toString ());
 
   editor ed;
   try {
@@ -302,9 +295,11 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
     ed = NULL;
   }
   if (!is_nil (ed)) {
-    // The path was collected relative to ed->the_buffer(); prepend rp
-    // so it becomes an absolute path in et for go_to().
-    ed->go_to (ed->get_root_path () / bufferRel);
+    // absPath was collected as an ABSOLUTE path in et (base = get_root_path()),
+    // so it can be passed directly to go_to().  Append * 0 to move the cursor
+    // onto the section's first child (the heading text), mirroring the
+    // focus-menu's (tree-go-to s 0 :end) navigation.
+    ed->go_to (absPath * 0);
   }
 }
 
@@ -327,20 +322,10 @@ OutlinePanel::collectSections (tree t, path base,
   // Section-like node: has >= 1 child and is a known section label.
   tree_label label = L (t);
 
-  // DEBUG: print every compound node
-  static int depth = 0;
-  depth++;
-  fprintf (stderr, "[OutlinePanel DEBUG] depth=%d, label=%s, n=%d\n",
-           depth, as_charp (as_string (label)), n);
-  depth--;
-
   if (n >= 1 && is_section_label (label)) {
 
     // Extract the section title using safe extraction
     string title_text = extract_section_title (t);
-
-    fprintf (stderr, "[OutlinePanel DEBUG]   -> SECTION: title='%s', n_title=%d\n",
-             as_charp (title_text), N (title_text));
 
     if (N (title_text) != 0) {
       entries.append ({ base, section_level (label), title_text });
@@ -378,7 +363,10 @@ OutlinePanel::buildOutlineTree (const QVector<SectionEntry>& entries) {
 
   for (const auto& entry : entries) {
     QTreeWidgetItem* item = new QTreeWidgetItem;
-    item->setText (0, QString::fromUtf8 (as_charp (entry.title)));
+    // The title is stored in Cork encoding inside the tree; to_qstring()
+    // converts it to UTF-8 for Qt display (fixes CJK titles showing as
+    // "<#3406>"-style escapes).
+    item->setText (0, to_qstring (entry.title));
     item->setData (0, Qt::UserRole, QVariant (pathToString (entry.p)));
 
     int lvl = entry.level;
@@ -421,7 +409,10 @@ OutlinePanel::pathToString (path p) {
 
 path
 OutlinePanel::stringToPath (const QString& s) {
-  path result (0);
+  // NOTE: path is list<int>; default-construct the EMPTY list here.
+  // path result(0) would create the single-item list [0] and corrupt
+  // every deserialised path with a spurious leading zero.
+  path result;
   QStringList parts = s.split (',', Qt::SkipEmptyParts);
   for (const QString& part : parts) {
     result = result * part.toInt ();
