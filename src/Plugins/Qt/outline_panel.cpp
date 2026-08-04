@@ -14,6 +14,7 @@
 #include "new_view.hpp"
 #include "path.hpp"
 #include "tree.hpp"
+#include "tree_helper.hpp"
 #include "editor.hpp"
 
 #include "qt_tm_widget.hpp"
@@ -48,7 +49,8 @@ is_section_label (tree_label tl) {
       || tl == make_tree_label ("subparagraph") || tl == make_tree_label ("subparagraph*");
 
   if (result) {
-    fprintf (stderr, "[OutlinePanel DEBUG] is_section_label: %s -> TRUE\n", as_charp (tl));
+    fprintf (stderr, "[OutlinePanel DEBUG] is_section_label: %s -> TRUE\n",
+             as_charp (as_string (tl)));
   }
 
   return result;
@@ -107,23 +109,23 @@ string
 OutlinePanel::extract_section_title (tree t) {
   if (N (t) == 0) return string ();
 
-  // Try to get the first child as the title
-  tree title_child = t[0];
-
-  // Case 1: atomic (simple text) - use as_string
-  if (is_atomic (title_child)) {
-    string text = as_string (tree (title_child));
-    // Filter out pure digits or "<digits>" (magic paste artifacts)
-    if (is_all_digits (text) || is_angle_bracket_digits (text)) {
-      return string (); // invalid title, skip this section
+  // A section node is (section 标题...) — all children together form
+  // the title.  A plain title is a single atomic child; a title that
+  // contains inline markup is split into several children (e.g.
+  // (section (strong "加粗") "标题")).  Concatenate every child's
+  // flattened text so the outline shows the full heading.
+  string text;
+  for (int i = 0; i < N (t); ++i) {
+    if (is_atomic (t[i])) {
+      text << as_string (t[i]);
+    } else {
+      text << tree_as_string (t[i]);
     }
-    return text;
   }
 
-  // Case 2: compound tree - use as_string which flattens markup
-  string text = as_string (title_child);
+  // Filter out pure digits or "<digits>" (magic paste artifacts)
   if (is_all_digits (text) || is_angle_bracket_digits (text)) {
-    return string ();
+    return string (); // invalid title, skip this section
   }
   return text;
 }
@@ -176,6 +178,17 @@ OutlinePanel::~OutlinePanel () {
 }
 
 /* ================================================================== */
+/*  Show event: refresh immediately when the panel becomes visible    */
+/* ================================================================== */
+
+void
+OutlinePanel::showEvent (QShowEvent* ev) {
+  QDockWidget::showEvent (ev);
+  // Ensure the outline is up to date the moment the user opens it.
+  refresh ();
+}
+
+/* ================================================================== */
 /*  Slot: toggle visibility                                           */
 /* ================================================================== */
 
@@ -221,26 +234,54 @@ OutlinePanel::isCompactMode () const {
 
 void
 OutlinePanel::refresh () {
+  // Debounce: any pending refresh is replaced by this one.
   m_refreshTimer->stop ();
 
-  editor ed = get_current_editor ();
-  if (is_nil (ed)) return;
-  tree doc = ed->the_buffer (); // current document tree, not global the_et
-  if (is_atomic (doc)) return;
+  // Only keep polling while the panel is actually visible.
+  if (!isVisible ()) return;
+
+  editor ed;
+  try {
+    ed = get_current_editor ();
+  } catch (...) {
+    ed = NULL;
+  }
+  if (is_nil (ed)) {
+    // Editor not ready yet (startup): retry shortly instead of giving up.
+    m_refreshTimer->start ();
+    return;
+  }
+
+  tree doc;
+  try {
+    doc = ed->the_buffer (); // current document tree, not global the_et
+  } catch (...) {
+    m_refreshTimer->start ();
+    return;
+  }
+  if (is_atomic (doc)) {
+    // Empty document — nothing to show yet, but keep polling.
+    m_refreshTimer->start ();
+    return;
+  }
 
   // DEBUG: print document root label and structure
   fprintf (stderr, "[OutlinePanel DEBUG] Document root label: %s (atomic=%d)\n",
-           as_charp (L (doc)), is_atomic (doc));
+           as_charp (as_string (L (doc))), is_atomic (doc));
 
   // --- Pass 1: flat collection ---
   QVector<SectionEntry> entries;
   collectSections (doc, path (), entries);
 
-  fprintf (stderr, "[OutlinePanel DEBUG] Collected %d sections\n", entries.size ());
+  fprintf (stderr, "[OutlinePanel DEBUG] Collected %d sections\n",
+           (int) entries.size ());
 
   // --- Pass 2: rebuild tree widget with hierarchy ---
   m_tree->clear ();
   buildOutlineTree (entries);
+
+  // Keep polling (debounced) so the outline stays in sync while typing.
+  m_refreshTimer->start ();
 }
 
 /* ================================================================== */
@@ -254,7 +295,12 @@ OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
 
   path bufferRel = stringToPath (data.toString ());
 
-  editor ed = get_current_editor ();
+  editor ed;
+  try {
+    ed = get_current_editor ();
+  } catch (...) {
+    ed = NULL;
+  }
   if (!is_nil (ed)) {
     // The path was collected relative to ed->the_buffer(); prepend rp
     // so it becomes an absolute path in et for go_to().
@@ -285,7 +331,7 @@ OutlinePanel::collectSections (tree t, path base,
   static int depth = 0;
   depth++;
   fprintf (stderr, "[OutlinePanel DEBUG] depth=%d, label=%s, n=%d\n",
-           depth, as_charp (label), n);
+           depth, as_charp (as_string (label)), n);
   depth--;
 
   if (n >= 1 && is_section_label (label)) {

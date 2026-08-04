@@ -16,6 +16,7 @@
 #include "tree.hpp"
 
 #include <QDockWidget>
+#include <QShowEvent>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVector>
@@ -53,6 +54,10 @@ public:
 
   /** Check if in narrow strip mode */
   bool isCompactMode () const;
+
+protected:
+  /** Refresh as soon as the panel becomes visible. */
+  void showEvent (QShowEvent* ev) override;
 
 public slots:
   /** Rebuild the outline tree from the current document. */
