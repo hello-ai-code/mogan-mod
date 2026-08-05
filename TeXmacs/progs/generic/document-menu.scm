@@ -735,6 +735,7 @@
 
 (menu-bind page-rendering-menu
  ("Single Page" (init-page-rendering "paper"))
+ ("Fit Width" (init-page-rendering "fit-width"))
  ("Continuous Scroll" (init-page-rendering "papyrus"))
  (assuming (in-beamer?) ("Beamer" (init-page-rendering "beamer")))
  ("Two Page" (init-page-rendering "book"))

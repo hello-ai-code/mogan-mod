@@ -375,11 +375,13 @@
   (init-default "page-border")
   (init-default "page-packet")
   (init-default "page-offset")
+  (init-env "page-fit-width" "off")
   (notify-page-change)
 ) ;tm-define
 
 (tm-define (get-init-page-rendering)
-  (cond ((== (get-init "page-border") "attached") "book")
+  (cond ((== (get-init "page-fit-width") "on") "fit-width")
+        ((== (get-init "page-border") "attached") "book")
         ((and (== (get-init "page-packet") "2")
            (== (get-init "page-medium") "paper")
            (== (get-init "page-border") "none")
@@ -402,6 +404,7 @@
         ((== s "book") "Two Page")
         ((== s "panorama") "Panorama")
         ((== s "slideshow") "Slideshow")
+        ((== s "fit-width") "Fit Width")
         (else s)
   ) ;cond
 ) ;tm-define
@@ -411,11 +414,28 @@
 ) ;define
 (tm-define (init-page-rendering s)
   (:check-mark "*" test-page-rendering?)
+  ;; "fit-width" is tracked with its own env flag so that get-init-page-rendering
+  ;; can tell it apart from plain "paper" (both share page-medium = paper but
+  ;; fit-width additionally zooms the content to fill the window width).
+  (if (== s "fit-width")
+    (init-env "page-fit-width" "on")
+    (init-env "page-fit-width" "off")
+  ) ;if
   (when (in? s (list "paper" "papyrus"))
     (set-preference "page medium" s)
   ) ;when
   (save-zoom (get-init-page-rendering))
-  (cond ((== s "book")
+  (cond ((== s "fit-width")
+         (init-env "page-medium" "paper")
+         (init-default "page-border")
+         (init-default "page-packet")
+         (init-default "page-offset")
+         (notify-page-change)
+         ;; Reuse the existing View-menu fit action: single-page paper
+         ;; layout whose width fills the window (B + fit-to-screen-width).
+         (delayed (:idle 50) (fit-to-screen-width))
+        ) ;
+        ((== s "book")
          (init-env "page-medium" "paper")
          (init-env "page-border" "none")
          (init-env "page-packet" "2")
