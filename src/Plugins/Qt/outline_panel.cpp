@@ -269,12 +269,37 @@ OutlinePanel::refresh () {
   QVector<SectionEntry> entries;
   collectSections (doc, ed->get_root_path (), entries);
 
-  // --- Pass 2: rebuild tree widget with hierarchy ---
-  m_tree->clear ();
-  buildOutlineTree (entries);
+  // --- Pass 2: only rebuild the tree widget if the outline actually
+  // changed.  Fingerprint comparison prevents a pointless clear()/recreate
+  // every 500 ms, which used to destroy the item under the cursor and make
+  // a single click unreliable (double-click appeared required).
+  QString fp = makeFingerprint (entries);
+  if (fp != m_lastFingerprint) {
+    m_tree->clear ();
+    buildOutlineTree (entries);
+    m_lastFingerprint = fp;
+  }
 
   // Keep polling (debounced) so the outline stays in sync while typing.
   m_refreshTimer->start ();
+}
+
+/* ================================================================== */
+/*  Outline content fingerprint                                        */
+/* ================================================================== */
+
+QString
+OutlinePanel::makeFingerprint (const QVector<SectionEntry>& entries) {
+  QString s;
+  for (const auto& e : entries) {
+    s += QString::number (e.level);
+    s += QLatin1Char (':');
+    s += pathToString (e.p);
+    s += QLatin1Char (':');
+    s += to_qstring (e.title);
+    s += QLatin1Char ('\n');
+  }
+  return s;
 }
 
 /* ================================================================== */
@@ -285,6 +310,10 @@ void
 OutlinePanel::onItemClicked (QTreeWidgetItem* item, int /*column*/) {
   QVariant data = item->data (0, Qt::UserRole);
   if (data.isNull ()) return;
+
+  // Stop any pending refresh so a rebuild does not wipe out the clicked
+  // item / selection in the same event-loop turn as the navigation.
+  m_refreshTimer->stop ();
 
   path absPath = stringToPath (data.toString ());
 

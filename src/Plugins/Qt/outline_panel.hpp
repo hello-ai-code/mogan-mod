@@ -90,9 +90,17 @@ private:
   /** Build the QTreeWidget hierarchy from a flat list of entries. */
   void buildOutlineTree (const QVector<SectionEntry>& entries);
 
+  /** Build a content fingerprint from entries; used to avoid rebuilding
+   *  the tree when nothing changed (which would otherwise destroy the
+   *  clicked item mid-click). */
+  static QString makeFingerprint (const QVector<SectionEntry>& entries);
+
   qt_tm_widget_rep* m_parentWidget;
   QTreeWidget* m_tree;
   QTimer* m_refreshTimer;
+
+  /** Fingerprint of the outline currently shown; empty = not built yet. */
+  QString m_lastFingerprint;
 
   /** Constants for compact mode dimensions */
   static constexpr int COMPACT_WIDTH = 50;   // narrow strip width
