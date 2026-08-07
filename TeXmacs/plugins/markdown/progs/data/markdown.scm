@@ -26,14 +26,15 @@
 ;; Markdown format definition
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-format markdown-snippet
-  (:name "Markdown snippet")
+; NOTE: use a single base format name "markdown" (no "-document"/"-snippet"
+; suffix), aligned with how `latex` is declared.  The define-format macro
+; automatically derives <name>-document and <name>-file formats.  Having
+; the base name end in "-document" would double the suffix
+; (markdown-document-document) and break format matching on open/import.
+(define-format markdown
+  (:name "Markdown")
   (:suffix "md" "markdown" "mdown")
   (:must-recognize markdown-recognizes?))
-
-(define-format markdown-document
-  (:name "Markdown document")
-  (:suffix "md" "markdown" "mdown"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Format detection
@@ -68,7 +69,7 @@
  * "Error: bad format or data." fallback. We now call the C++ primitives
  * directly (exposed through glue_basic.lua) to bypass the path table.
  * The Scheme layer still guards against empty/erroneous C++ output.
- |
+ |#
 ;
 
 ; Wrapper for markdown -> texmacs-tree
