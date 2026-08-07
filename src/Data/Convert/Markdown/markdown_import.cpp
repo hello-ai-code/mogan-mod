@@ -87,20 +87,28 @@ md_enter_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
         case 5: tag= "subparagraph";   break;
         default: tag= "subsubparagraph"; break;
         }
+        /* Push heading container, then a separate CONCAT on top of the
+         * stack to collect the heading's inline text.  md_text appends to
+         * node_stack.top(), so text would otherwise land directly on the
+         * (tag concat) node instead of inside its CONCAT, losing the
+         * heading text.  Same pattern as inline spans below. */
         ctx.node_stack.push (compound (tag, tree (CONCAT)));
+        ctx.node_stack.push (tree (CONCAT));
         break;
     }
 
     case MD_BLOCK_UL:
-        ctx.node_stack.push (compound ("itemize", tree (DOCUMENT)));
+        /* list container: no DOCUMENT wrapper — items are direct children,
+         * matching tmu3-v2.lua output <\itemize><item>...</item></itemize> */
+        ctx.node_stack.push (compound ("itemize"));
         break;
 
     case MD_BLOCK_OL:
-        ctx.node_stack.push (compound ("enumerate", tree (DOCUMENT)));
+        ctx.node_stack.push (compound ("enumerate"));
         break;
 
     case MD_BLOCK_LI:
-        ctx.node_stack.push (compound ("item", tree (DOCUMENT)));
+        ctx.node_stack.push (compound ("item"));
         break;
 
     case MD_BLOCK_CODE: {
@@ -158,19 +166,21 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
         parent << child;
         break;
 
-    case MD_BLOCK_H:
-        /* heading: child is compound(tag, CONCAT)
-         * unwrap the CONCAT so heading has inline content directly */
-        if (N (child) >= 1) {
-            tree content = child[0];
-            string tag   = as_string (L (child));
-            tree  h      = compound (tag);
-            for (int i = 0; i < N (content); i++)
-                h << content[i];
-            parent << h;
-        }
-        else parent << child;
+    case MD_BLOCK_H: {
+        /* heading: child is the CONCAT that collected the heading text
+         * (pushed separately in md_enter_block); the heading container
+         * (tag concat) sits right below it on the stack.  Merge text into
+         * the container's concat and push the container to the parent. */
+        tree content = child;                    /* collected heading text */
+        tree container = ctx.node_stack.top ();  /* (tag concat) */
+        ctx.node_stack.pop ();
+        string tag = as_string (L (container));
+        tree h = compound (tag);
+        for (int i = 0; i < N (content); i++)
+            h << content[i];
+        parent << h;
         break;
+    }
 
     case MD_BLOCK_CODE: {
         /* code block: child is CONCAT of text fragments
@@ -261,10 +271,14 @@ md_leave_span (MD_SPANTYPE type, void* detail, void* userdata) {
 
     switch (type) {
     case MD_SPAN_EM:
-        result = compound ("em");
+        /* italic — standard TeXmacs form (tmu3-v2.lua):
+         * <with|font-shape|italic|...> */
+        result = compound ("with", "font-shape", "italic");
         break;
     case MD_SPAN_STRONG:
-        result = compound ("strong");
+        /* bold — standard TeXmacs form (tmu3-v2.lua):
+         * <with|font-series|bold|...> */
+        result = compound ("with", "font-series", "bold");
         break;
     case MD_SPAN_CODE:
         /* code: join all text into single string */

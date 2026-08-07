@@ -129,6 +129,24 @@ export_single_node (tree t, md_export_context& ctx) {
             export_single_node (t[i], ctx);
         ctx.result << "**";
     }
+    /* Standard TeXmacs form for bold/italic:
+     *   <with|font-series|bold|...>  and  <with|font-shape|italic|...> */
+    else if (is_label (t, "with") && N (t) >= 3 &&
+             is_atomic (t[0]) && is_atomic (t[1])) {
+        string key   = as_string (t[0]);
+        string value = as_string (t[1]);
+        string o;
+        if (key == "font-series" && value == "bold")       o = "**";
+        else if (key == "font-shape" && value == "italic") o = "*";
+        if (!o.empty ()) {
+            ctx.result << o;
+            for (int i = 2; i < N (t); i++)
+                export_single_node (t[i], ctx);
+            ctx.result << o;
+            return;
+        }
+        /* non-bold/italic "with": fall through to generic export */
+    }
     else if (is_label (t, "code", "verbatim")) {
         ctx.result << "`";
         for (int i = 0; i < N (t); i++)
@@ -276,7 +294,9 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
             tree item = t[i];
             ctx.result << "- ";
             if (is_label (item, "item")) {
-                for (int j = 1; j < N (item); j++)
+                /* item children are the content directly (no DOCUMENT
+                 * wrapper since the import-side change); export all */
+                for (int j = 0; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
             else {
