@@ -78,14 +78,18 @@ md_enter_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
 
     case MD_BLOCK_H: {
         unsigned level = static_cast<MD_BLOCK_H_DETAIL*> (detail)->level;
+        /* Level mapping follows tmu3-v2.lua section_tags:
+         *   #   → chapter*, ## → section*, ### → subsection*,
+         *   #### → subsubsection*, ##### → paragraph*, ###### → subparagraph*
+         * The trailing '*' means "unnumbered" (plain Markdown titles). */
         string tag;
         switch (level) {
-        case 1: tag= "section";        break;
-        case 2: tag= "subsection";     break;
-        case 3: tag= "subsubsection";  break;
-        case 4: tag= "paragraph";      break;
-        case 5: tag= "subparagraph";   break;
-        default: tag= "subsubparagraph"; break;
+        case 1: tag= "chapter*";       break;
+        case 2: tag= "section*";       break;
+        case 3: tag= "subsection*";    break;
+        case 4: tag= "subsubsection*"; break;
+        case 5: tag= "paragraph*";     break;
+        default: tag= "subparagraph*"; break;
         }
         /* Push heading container, then a separate CONCAT on top of the
          * stack to collect the heading's inline text.  md_text appends to
@@ -157,20 +161,16 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
 
     tree child = ctx.node_stack.top ();
     ctx.node_stack.pop ();
-    tree& parent = ctx.node_stack.top ();
 
     switch (type) {
-    case MD_BLOCK_P:
-    case MD_BLOCK_HTML:
-        /* paragraph: child is a CONCAT, append to parent */
-        parent << child;
-        break;
-
     case MD_BLOCK_H: {
-        /* heading: child is the CONCAT that collected the heading text
+        /* Heading: child is the CONCAT that collected the heading text
          * (pushed separately in md_enter_block); the heading container
          * (tag concat) sits right below it on the stack.  Merge text into
-         * the container's concat and push the container to the parent. */
+         * a fresh (tag ...) node and append it to the *real* parent —
+         * which is the stack top AFTER popping the container.  (Grabbing a
+         * reference to the container itself and appending there would drop
+         * the heading into a node that is no longer reachable.) */
         tree content = child;                    /* collected heading text */
         tree container = ctx.node_stack.top ();  /* (tag concat) */
         ctx.node_stack.pop ();
@@ -178,9 +178,16 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
         tree h = compound (tag);
         for (int i = 0; i < N (content); i++)
             h << content[i];
-        parent << h;
+        if (ctx.node_stack.size () >= 1)
+            ctx.node_stack.top () << h;
         break;
     }
+
+    case MD_BLOCK_P:
+    case MD_BLOCK_HTML:
+        /* paragraph: child is a CONCAT, append to parent */
+        ctx.node_stack.top () << child;
+        break;
 
     case MD_BLOCK_CODE: {
         /* code block: child is CONCAT of text fragments
@@ -191,18 +198,18 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
             if (is_atomic (child[i]))
                 code_text << child[i]->label;
         }
-        parent << compound ("verbatim", code_text);
+        ctx.node_stack.top () << compound ("verbatim", code_text);
         break;
     }
 
     case MD_BLOCK_HR:
         /* horizontal rule: replace dummy with hrule */
-        parent << compound ("hrule");
+        ctx.node_stack.top () << compound ("hrule");
         break;
 
     default:
         /* quote, lists, list items: append as-is */
-        parent << child;
+        ctx.node_stack.top () << child;
         break;
     }
     return 0;

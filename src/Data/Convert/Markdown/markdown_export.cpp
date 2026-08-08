@@ -40,7 +40,11 @@ is_label (tree t, const char* label1, const char* label2) {
 
 static inline bool
 is_heading_tag (string s) {
-    return (s == "section" || s == "subsection" ||
+    /* Trailing '*' = unnumbered section, matches the import-side tags
+     * (chapter*, section*, ... per tmu3-v2.lua section_tags). */
+    if (!is_empty (s) && s[N (s) - 1] == '*')
+        s = s (0, N (s) - 1);
+    return (s == "chapter" || s == "section" || s == "subsection" ||
             s == "subsubsection" || s == "paragraph" ||
             s == "subparagraph" || s == "subsubparagraph");
 }
@@ -264,7 +268,13 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
     /* Headings */
     if (is_heading_tag (label)) {
         int level = 0;
-        if (label == "section") level = 1;
+        if (label == "chapter*") level = 1;
+        else if (label == "section*") level = 2;
+        else if (label == "subsection*") level = 3;
+        else if (label == "subsubsection*") level = 4;
+        else if (label == "paragraph*") level = 5;
+        else if (label == "subparagraph*") level = 6;
+        else if (label == "section") level = 1;
         else if (label == "subsection") level = 2;
         else if (label == "subsubsection") level = 3;
         else if (label == "paragraph") level = 4;
@@ -314,7 +324,10 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
             tree item = t[i];
             if (is_label (item, "item")) {
                 ctx.result << as_string (num) << ". ";
-                for (int j = 1; j < N (item); j++)
+                /* item children are the content directly (no DOCUMENT
+                 * wrapper, matching import-side); export all children
+                 * from index 0 exactly like itemize does. */
+                for (int j = 0; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
             else {
