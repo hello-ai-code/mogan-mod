@@ -138,7 +138,7 @@ export_single_node (tree t, md_export_context& ctx) {
         string o;
         if (key == "font-series" && value == "bold")       o = "**";
         else if (key == "font-shape" && value == "italic") o = "*";
-        if (!o.empty ()) {
+        if (!is_empty (o)) {
             ctx.result << o;
             for (int i = 2; i < N (t); i++)
                 export_single_node (t[i], ctx);
