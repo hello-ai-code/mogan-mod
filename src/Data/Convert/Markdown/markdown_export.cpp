@@ -9,6 +9,7 @@
  ******************************************************************************/
 
 #include "convert.hpp"
+#include "converter.hpp"
 #include "tree.hpp"
 #include "tree_helper.hpp"
 #include "string.hpp"
@@ -86,8 +87,9 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level);
 static void
 export_single_node (tree t, md_export_context& ctx) {
     if (is_atomic (t)) {
-        /* Escape special Markdown characters */
-        string s = t->label;
+        /* Tree labels are cork-encoded; Markdown output must be UTF-8.
+         * Escape special Markdown characters after transcoding. */
+        string s = cork_to_utf8 (t->label);
         int n = N (s);
         for (int i = 0; i < n; i++) {
             char c = s[i];
@@ -190,7 +192,7 @@ export_single_node (tree t, md_export_context& ctx) {
     else if (is_label (t, "hlink")) {
         if (N (t) >= 2) {
             tree content = t[0];
-            string href = as_string (t[1]);
+            string href = cork_to_utf8 (as_string (t[1]));
             ctx.result << "[";
             export_single_node (content, ctx);
             ctx.result << "](" << href << ")";
@@ -198,7 +200,7 @@ export_single_node (tree t, md_export_context& ctx) {
     }
     else if (is_label (t, "image")) {
         if (N (t) >= 3) {
-            string src = as_string (t[1]);
+            string src = cork_to_utf8 (as_string (t[1]));
             tree alt = t[2];
             ctx.result << "![";
             export_single_node (alt, ctx);
@@ -222,7 +224,8 @@ export_single_node (tree t, md_export_context& ctx) {
 static void
 export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
     if (is_atomic (t)) {
-        ctx.result << md_escape_text (t->label);
+        /* cork → UTF-8, then escape special Markdown characters */
+        ctx.result << md_escape_text (cork_to_utf8 (t->label));
         return;
     }
 
@@ -393,7 +396,7 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         string lang;
         for (int i = 0; i < N (t); i++) {
             if (is_atomic (t[i]))
-                code_text << t[i]->label;
+                code_text << cork_to_utf8 (t[i]->label);
         }
 
         ctx.result << "```";
@@ -438,6 +441,6 @@ tree_to_markdown (tree t) {
     for (int i = 0; i < len; i++)
         out << ctx.result[i];
     out << '\n';
-    
+
     return out;
 }

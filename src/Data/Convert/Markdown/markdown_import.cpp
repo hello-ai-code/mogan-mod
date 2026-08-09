@@ -9,6 +9,7 @@
  ******************************************************************************/
 
 #include "convert.hpp"
+#include "converter.hpp"
 #include "tree.hpp"
 #include "tree_helper.hpp"
 extern "C" {
@@ -38,7 +39,11 @@ struct md_context {
 
 static inline string
 md_str (const MD_CHAR* text, MD_SIZE size) {
-    return string (text, (int) size);
+    /* md4c hands us raw UTF-8 bytes; Mogan tree labels are cork-encoded
+     * (like verbatim's encode(..., "utf-8")), so convert here once for
+     * all text, URLs, alt texts, language tags, etc. */
+    string s (text, (int) size);
+    return utf8_to_cork (s);
 }
 
 /* Append a child to the top of the stack */
@@ -429,12 +434,17 @@ tree
 markdown_document_to_tree (string s) {
     /* Build a standard Mogan document tree rooted at DOCUMENT, mirroring
      * verbatim_document_to_tree():
-     *   (DOCUMENT (body <children...>) (initial ...))
+     *   (DOCUMENT (body ...) (style (tuple "generic")) (initial ...))
      * markdown_to_tree() returns a bare (DOCUMENT <content...>) whose
      * children must be UNWRAPPED into the body node — the previous code
      * only wrapped when arity==0 (empty doc), so non-empty markdown came
      * back as a bare DOCUMENT with no body/initial framework and the
      * editor opened it as an empty buffer.
+     *
+     * The style child is mandatory: Mogan documents without it display
+     * incorrectly (no sectioning was applied).  The standard default
+     * style is <style|<tuple|generic>>, matching the "generic" fallback
+     * in upgradetm (and the fromtm extraction of style attributes).
      */
     tree body= markdown_to_tree (string (s));
     tree b   = compound ("body");
@@ -446,5 +456,6 @@ markdown_document_to_tree (string s) {
     tree init= tree (COLLECTION,
                      tree (ASSOCIATE, LANGUAGE, "english"),
                      tree (ASSOCIATE, PAR_FIRST, "0cm"));
-    return tree (DOCUMENT, b, compound ("initial", init));
+    tree style= compound ("style", tree (TUPLE, "generic"));
+    return tree (DOCUMENT, b, style, compound ("initial", init));
 }
