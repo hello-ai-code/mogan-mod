@@ -15,6 +15,7 @@ extern "C" {
 #include "md4c.h"
 }
 #include <moebius/tree_label.hpp>
+#include <moebius/vars.hpp>
 
 #include <stack>
 
