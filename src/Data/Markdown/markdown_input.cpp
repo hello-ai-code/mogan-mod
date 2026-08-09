@@ -48,10 +48,37 @@ collect_text (tree t, string& out) {
 }
 
 /******************************************************************************
- * Core entry point: convert Markdown inline patterns at the cursor.
+ * Locate the nearest CONCAT ancestor of the cursor path.
+ *
+ * WARNING — parent_subtree (et, tp) is NOT usable here:
+ *   tp is a FULL cursor path (e.g. (0).(0).(k): DOCUMENT[0] = CONCAT,
+ *   CONCAT[0] = text atom, k = char).  parent_subtree() strips only the LAST
+ *   item (k), therefore it returns the text ATOM (CONCAT[0]), which is atomic
+ *   -> apply_markdown_inline_conversion() silently bailed out on
+ *   "is_atomic (parent)" and never converted anything.
+ *
+ *   We walk upwards from tp, one level at a time, until we hit a compound
+ *   CONCAT container (the paragraph).  Single-atom paragraphs are their own
+ *   CONCAT's first child; multi-atom paragraphs may wrap the cursor deeper.
+ ******************************************************************************/
+static tree*
+search_concat_parent (tree& et, path tp) {
+    path p = tp;
+    while (!is_nil (p)) {
+        p = path_up (p);
+        if (is_nil (p) || !has_subtree (et, p)) break;
+        tree* node = &subtree (et, p);
+        if (is_atomic (*node)) continue;
+        if (*node == "CONCAT") return node;
+    }
+    return NULL;
+}
+
+/******************************************************************************
+ * Core entry point: apply the Markdown inline patterns at the cursor.
  *
  * Called from edit_interface_rep::apply_changes() on pure tree changes
- * (typing).  We examine the CONCAT parent of the cursor position; if it is
+ * (typing).  We examine the CONCAT ancestor of the cursor position; if it is
  * plain text forming a complete inline Markdown pattern, we replace the
  * CONCAT's content with the parsed TeXmacs formatting tree.
  *
@@ -61,12 +88,12 @@ bool
 apply_markdown_inline_conversion (tree& et, path tp) {
     if (is_nil (tp)) return false;
 
-    tree& parent = parent_subtree (et, tp);
-    if (is_atomic (parent)) return false;
+    tree* pp = search_concat_parent (et, tp);
+    if (pp == NULL) return false;
+    tree& parent = *pp;
 
     /* Only operate on a plain-text CONCAT container.
        Avoid flattening nodes that already carry structure. */
-    if (as_string (L (parent)) != "CONCAT") return false;
     if (has_formatting (parent)) return false;
 
     /* Collect all text from the CONCAT. */
