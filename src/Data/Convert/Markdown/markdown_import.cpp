@@ -426,14 +426,24 @@ markdown_to_tree (string s) {
 
 tree
 markdown_document_to_tree (string s) {
-    tree body = markdown_to_tree (s);
-    if (is_atomic (body) || is_compound (body, "DOCUMENT", 0)) {
-        tree init (COLLECTION);
-        body = compound ("body", body);
-        return compound ("TeXmacs", string ("1.0.0.2"),
-                         compound ("style", compound ("generic")),
-                         body,
-                         compound ("initial", init));
-    }
-    return body;
+    /* Build a standard Mogan document tree rooted at DOCUMENT, mirroring
+     * verbatim_document_to_tree():
+     *   (DOCUMENT (body <children...>) (initial ...))
+     * markdown_to_tree() returns a bare (DOCUMENT <content...>) whose
+     * children must be UNWRAPPED into the body node — the previous code
+     * only wrapped when arity==0 (empty doc), so non-empty markdown came
+     * back as a bare DOCUMENT with no body/initial framework and the
+     * editor opened it as an empty buffer.
+     */
+    tree body= markdown_to_tree (string (s));
+    tree b   = compound ("body");
+    if (is_compound (body, "DOCUMENT"))
+        for (int i= 0; i < N (body); i++)
+            b << body[i];
+    else
+        b << body;
+    tree init= tree (COLLECTION,
+                     tree (ASSOCIATE, LANGUAGE, "english"),
+                     tree (ASSOCIATE, PAR_FIRST, "0cm"));
+    return tree (DOCUMENT, b, compound ("initial", init));
 }
