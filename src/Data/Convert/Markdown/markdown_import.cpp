@@ -108,13 +108,19 @@ md_enter_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
     }
 
     case MD_BLOCK_UL:
-        /* list container: no DOCUMENT wrapper — items are direct children,
-         * matching tmu3-v2.lua output <\itemize><item>...</item></itemize> */
+        /* Standard Mogan list tree is (itemize (document (item ...)...)):
+         * the items must be wrapped in a DOCUMENT so that to_tmu's
+         * tmu_writer::apply() detects the document argument and emits the
+         * block form <\itemize>...</itemize> instead of the inline
+         * <itemize|<item|...>> form.  Push the container, then a DOCUMENT
+         * on top of the stack to collect the items. */
         ctx.node_stack.push (compound ("itemize"));
+        ctx.node_stack.push (tree (DOCUMENT));
         break;
 
     case MD_BLOCK_OL:
         ctx.node_stack.push (compound ("enumerate"));
+        ctx.node_stack.push (tree (DOCUMENT));
         break;
 
     case MD_BLOCK_LI:
@@ -213,8 +219,24 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
         ctx.node_stack.top () << compound ("hrule");
         break;
 
+    case MD_BLOCK_UL:
+    case MD_BLOCK_OL: {
+        /* List finished: child is the DOCUMENT that collected the items
+         * (pushed right after the container in md_enter_block).  Attach it
+         * to the container, then append the container to the real parent.
+         * Result: (itemize (document (item ...) (item ...))) — the
+         * standard Mogan list shape which to_tmu serializes as a block. */
+        tree doc       = child;
+        tree container = ctx.node_stack.top ();
+        ctx.node_stack.pop ();
+        container << doc;
+        if (ctx.node_stack.size () >= 1)
+            ctx.node_stack.top () << container;
+        break;
+    }
+
     default:
-        /* quote, lists, list items: append as-is */
+        /* quote, list items, etc.: append as-is */
         ctx.node_stack.top () << child;
         break;
     }

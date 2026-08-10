@@ -301,14 +301,17 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Itemize list */
+    /* Itemize list.
+     * Standard Mogan shape is (itemize (document (item ...)...)); the
+     * items live under a DOCUMENT child.  Fall back to direct children
+     * for hand-built trees without the wrapper. */
     if (is_label (t, "itemize")) {
-        for (int i = 0; i < N (t); i++) {
-            tree item = t[i];
+        tree items = (N (t) > 0 && is_document (t[0])) ? t[0] : t;
+        for (int i = 0; i < N (items); i++) {
+            tree item = items[i];
             ctx.result << "- ";
             if (is_label (item, "item")) {
-                /* item children are the content directly (no DOCUMENT
-                 * wrapper since the import-side change); export all */
+                /* item children are the content directly; export all */
                 for (int j = 0; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
@@ -322,14 +325,14 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
 
     /* Enumerate list */
     if (is_label (t, "enumerate")) {
-        int num = 1;
-        for (int i = 0; i < N (t); i++) {
-            tree item = t[i];
+        tree items = (N (t) > 0 && is_document (t[0])) ? t[0] : t;
+        int  num   = 1;
+        for (int i = 0; i < N (items); i++) {
+            tree item = items[i];
             if (is_label (item, "item")) {
                 ctx.result << as_string (num) << ". ";
-                /* item children are the content directly (no DOCUMENT
-                 * wrapper, matching import-side); export all children
-                 * from index 0 exactly like itemize does. */
+                /* item children are the content directly; export all
+                 * children from index 0 exactly like itemize does. */
                 for (int j = 0; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
