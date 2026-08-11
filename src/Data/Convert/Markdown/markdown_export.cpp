@@ -271,8 +271,18 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Initial/style: skip (metadata, not document content) */
-    if (label == "initial" || label == "style") {
+    /* Metadata nodes: skip (not document content).
+     * A Mogan document tree may carry, in addition to style/initial:
+     *   - references : auto-generated cross-reference/bookmark labels
+     *                  (<associate|auto-N|...>) added on save
+     *   - auxiliary  : cached toc/index/figure/table entries
+     *                  (<associate|toc|...> with font-series> bold, etc.)
+     *   - trailer / body-attrs : other non-content framing
+     * Exporting any of these leaks TeXmacs markup into the .md file
+     * (observed as "auto-1??...md toc2fn font-series> bold ..." at EOF). */
+    if (label == "initial" || label == "style" ||
+        label == "references" || label == "auxiliary" ||
+        label == "trailer" || label == "body-attrs") {
         return;
     }
 
