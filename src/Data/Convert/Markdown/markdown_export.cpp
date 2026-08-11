@@ -123,11 +123,11 @@ export_single_node (tree t, md_export_context& ctx) {
 
     /* Inline formatting */
     if (is_label (t, "em")) {
-        if (N (t) > 0) {
-            ctx.result << "*";
-            export_single_node (t[0], ctx);
-            ctx.result << "*";
-        }
+        /* export ALL children, not just t[0] */
+        ctx.result << "*";
+        for (int i = 0; i < N (t); i++)
+            export_single_node (t[i], ctx);
+        ctx.result << "*";
     }
     else if (is_label (t, "strong")) {
         ctx.result << "**";
@@ -136,7 +136,11 @@ export_single_node (tree t, md_export_context& ctx) {
         ctx.result << "**";
     }
     /* Standard TeXmacs form for bold/italic:
-     *   <with|font-series|bold|...>  and  <with|font-shape|italic|...> */
+     *   <with|font-series|bold|...>  and  <with|font-shape|italic|...>
+     * A "with" node may carry MULTIPLE (key,value) pairs, e.g.
+     *   <with|font-series|bold|color|red|content...>
+     * so skip every consecutive atomic (key,value) pair, then export the
+     * remaining children as the actual content. */
     else if (is_label (t, "with") && N (t) >= 3 &&
              is_atomic (t[0]) && is_atomic (t[1])) {
         string key   = as_string (t[0]);
@@ -151,7 +155,18 @@ export_single_node (tree t, md_export_context& ctx) {
             ctx.result << o;
             return;
         }
-        /* non-bold/italic "with": fall through to generic export */
+        /* Non-bold/italic "with": unwrap content (skip ALL leading
+         * (key,value) pair atoms, not just the first two) and export
+         * the remainder.  Do NOT fall through to generic export which
+         * would leak the key/value atoms as literal text. */
+        int content_start = 2;
+        while (content_start + 1 < N (t) &&
+               is_atomic (t[content_start]) &&
+               is_atomic (t[content_start + 1]))
+            content_start += 2;
+        for (int i = content_start; i < N (t); i++)
+            export_single_node (t[i], ctx);
+        return;
     }
     else if (is_label (t, "code", "verbatim")) {
         ctx.result << "`";
@@ -306,13 +321,24 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
      * items live under a DOCUMENT child.  Fall back to direct children
      * for hand-built trees without the wrapper. */
     if (is_label (t, "itemize")) {
+        /* blank line before list (same rule as headings) */
+        int res_len = N (ctx.result);
+        if (res_len > 0 && ctx.result[res_len - 1] != '\n')
+            ctx.result << "\n\n";
         tree items = (N (t) > 0 && is_document (t[0])) ? t[0] : t;
         for (int i = 0; i < N (items); i++) {
             tree item = items[i];
             ctx.result << "- ";
             if (is_label (item, "item")) {
-                /* item children are the content directly; export all */
+                /* container-style (item ...): children are the content */
                 for (int j = 0; j < N (item); j++)
+                    export_tree_to_markdown (item[j], ctx, indent_level);
+            }
+            else if (is_concat (item) && N (item) > 0 &&
+                     is_label (item[0], "item")) {
+                /* marker-style (concat (item) content...): skip the
+                 * zero-argument (item) marker, export the rest */
+                for (int j = 1; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
             else {
@@ -320,29 +346,39 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
             }
             ctx.result << "\n";
         }
+        ctx.result << "\n";
         return;
     }
 
     /* Enumerate list */
     if (is_label (t, "enumerate")) {
+        /* blank line before list */
+        int res_len = N (ctx.result);
+        if (res_len > 0 && ctx.result[res_len - 1] != '\n')
+            ctx.result << "\n\n";
         tree items = (N (t) > 0 && is_document (t[0])) ? t[0] : t;
         int  num   = 1;
         for (int i = 0; i < N (items); i++) {
             tree item = items[i];
+            ctx.result << as_string (num) << ". ";
             if (is_label (item, "item")) {
-                ctx.result << as_string (num) << ". ";
-                /* item children are the content directly; export all
-                 * children from index 0 exactly like itemize does. */
+                /* container-style (item ...): children are the content */
                 for (int j = 0; j < N (item); j++)
                     export_tree_to_markdown (item[j], ctx, indent_level);
             }
+            else if (is_concat (item) && N (item) > 0 &&
+                     is_label (item[0], "item")) {
+                /* marker-style (concat (item) content...): skip marker */
+                for (int j = 1; j < N (item); j++)
+                    export_tree_to_markdown (item[j], ctx, indent_level);
+            }
             else {
-                ctx.result << as_string (num) << ". ";
                 export_tree_to_markdown (item, ctx, indent_level);
             }
             num++;
             ctx.result << "\n";
         }
+        ctx.result << "\n";
         return;
     }
 

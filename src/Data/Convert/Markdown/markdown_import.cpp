@@ -123,9 +123,19 @@ md_enter_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
         ctx.node_stack.push (tree (DOCUMENT));
         break;
 
-    case MD_BLOCK_LI:
-        ctx.node_stack.push (compound ("item"));
+    case MD_BLOCK_LI: {
+        /* Standard Mogan list item shape (see TeXmacs/tests/221_10.scm):
+         *     (itemize (document (concat (item) "content") ...))
+         * (item) is a ZERO-ARGUMENT marker: it sits as the FIRST element
+         * of a CONCAT and the item content follows as siblings.  The
+         * renderer only draws the bullet for (item), so wrapping content
+         * INSIDE an (item ...) container loses the text.  Push a CONCAT
+         * and seed it with the (item) marker. */
+        tree li (CONCAT);
+        li << compound ("item");
+        ctx.node_stack.push (li);
         break;
+    }
 
     case MD_BLOCK_CODE: {
         MD_BLOCK_CODE_DETAIL* det = static_cast<MD_BLOCK_CODE_DETAIL*> (detail);
@@ -197,8 +207,17 @@ md_leave_block (MD_BLOCKTYPE type, void* detail, void* userdata) {
 
     case MD_BLOCK_P:
     case MD_BLOCK_HTML:
-        /* paragraph: child is a CONCAT, append to parent */
-        ctx.node_stack.top () << child;
+        /* paragraph: child is a CONCAT, append to parent.
+         * If the parent is itself a CONCAT (list item / heading), flatten
+         * the paragraph's children into the parent instead of nesting a
+         * CONCAT — TeXmacs list items are flat (concat (item) text...). */
+        if (is_concat (ctx.node_stack.top ()) && is_concat (child)) {
+            for (int i = 0; i < N (child); i++)
+                ctx.node_stack.top () << child[i];
+        }
+        else {
+            ctx.node_stack.top () << child;
+        }
         break;
 
     case MD_BLOCK_CODE: {
