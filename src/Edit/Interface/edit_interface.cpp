@@ -1022,11 +1022,26 @@ edit_interface_rep::apply_changes () {
     // against non-concat / already-formatted trees, so running them here is
     // safe and lossless.
     if (env_change & (THE_TREE | THE_CURSOR | THE_SELECTION)) {
-      apply_markdown_inline_conversion (et, tp);
+      path md_p;
+      // B.4 inline pass: replace a complete markdown pattern (e.g. "**bold**")
+      // inside the cursor's CONCAT with the formatted tree.
+      if (apply_markdown_inline_conversion (et, tp, md_p)) {
+        // Synchronize the typesetter bridge tree with the modified et subtree.
+        // typeset_invalidate (p) does ::notify_assign (ttt, p / rp,
+        // subtree (et, p)) -> bridge st is substituted in place (path already
+        // exists) and status = CORRUPTED, so the next typeset() re-renders the
+        // new structure. This is safe inside apply_changes(): unlike the D.1
+        // regression, the modified path already exists in the bridge tree
+        // (the user typed inside that very CONCAT), so no "new node path"
+        // substitution crash can occur.
+        typeset_invalidate (md_p);
+      }
       // B.4.1 Block-level heading: morph a leading "# " paragraph into a
-      // section. Operates on et[0] only and preserves the cursor index, so it
-      // is safe to run alongside the inline pass.
-      apply_markdown_heading_conversion (et);
+      // section. Operates on the DOCUMENT root at rp (child 0) and preserves
+      // the cursor index, so it is safe to run alongside the inline pass.
+      if (apply_markdown_heading_conversion (et, rp, md_p)) {
+        typeset_invalidate (md_p);
+      }
     }
   }
 

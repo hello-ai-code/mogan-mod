@@ -62,15 +62,19 @@ collect_text (tree t, string& out) {
  *   CONCAT's first child; multi-atom paragraphs may wrap the cursor deeper.
  ******************************************************************************/
 static tree*
-search_concat_parent (tree& et, path tp) {
+search_concat_parent (tree& et, path tp, path& out_p) {
     path p = tp;
     while (!is_nil (p)) {
         p = path_up (p);
         if (is_nil (p) || !has_subtree (et, p)) break;
         tree* node = &subtree (et, p);
         if (is_atomic (*node)) continue;
-        if (*node == "CONCAT") return node;
+        if (*node == "CONCAT") {
+            out_p = p;
+            return node;
+        }
     }
+    out_p = path ();
     return NULL;
 }
 
@@ -85,10 +89,11 @@ search_concat_parent (tree& et, path tp) {
  * Returns true if a conversion was performed (caller re-typesets).
  ******************************************************************************/
 bool
-apply_markdown_inline_conversion (tree& et, path tp) {
+apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
     if (is_nil (tp)) return false;
 
-    tree* pp = search_concat_parent (et, tp);
+    path parent_p;
+    tree* pp = search_concat_parent (et, tp, parent_p);
     if (pp == NULL) return false;
     tree& parent = *pp;
 
@@ -109,6 +114,7 @@ apply_markdown_inline_conversion (tree& et, path tp) {
 
     /* Replace the CONCAT content with the parsed structure (idempotent). */
     parent = result.result;
+    out_p = parent_p;
     return true;
 }
 
@@ -119,13 +125,14 @@ apply_markdown_inline_conversion (tree& et, path tp) {
  * DESIGN NOTE — why "in-place morph" instead of a structural replace:
  *   Mogan stores paragraphs as DOCUMENT children WITHOUT a <paragraph> wrapper:
  *       DOCUMENT -> CONCAT("…text…")   (one CONCAT per paragraph)
- *   When the user types at the start of a paragraph, the cursor path is
- *       tp = (0).(0).k      // DOCUMENT[0] = CONCAT, CONCAT[0] = 1st text atom, k = char
+ *   et is the FULL buffer tree; rp points at the DOCUMENT root inside et.
+ *   When the user types at the start of the first paragraph, the cursor path is
+ *       tp = rp * 0 * 0 * k   // DOCUMENT[0] = CONCAT, CONCAT[0] = 1st text atom, k = char
  *   apply_changes() calls this with that tp, then keeps using the SAME tp later
  *   (find_check_cursor(tp), subtree(et, path_up(tp)), …).  If we replaced
  *   DOCUMENT[0] with a brand-new `section` node, the indices would shift (the
  *   CONCAT layer disappears) and tp would address an out-of-bounds position ->
- *   crash.  So we MORPH et[0] in place: the DOCUMENT child index (0) is
+ *   crash.  So we MORPH doc[0] in place: the DOCUMENT child index (0) is
  *   preserved, only the (CONCAT, content) pair is rewritten as (section, content
  *   minus the leading "# ").  The cursor tp stays valid, which is exactly what
  *   transparent input needs.  The exported .md still round-trips correctly via
@@ -135,15 +142,17 @@ apply_markdown_inline_conversion (tree& et, path tp) {
  *   with N hashes followed by a space (e.g. the user just typed the space, or
  *   the text begins that way).  We strip the leading "#… " and set the label.
  *
- * IDEMPOTENT: no-op when et[0] is already a section/subsection/etc.
+ * IDEMPOTENT: no-op when doc[0] is already a section/subsection/etc.
  ******************************************************************************/
 bool
-apply_markdown_heading_conversion (tree& et) {
-    if (is_atomic (et)) return false;
-    if (!is_func (et, DOCUMENT)) return false;
-    if (N (et) == 0) return false;
+apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
+    if (is_nil (rp) || !has_subtree (et, rp)) return false;
+    tree& doc = subtree (et, rp);
+    if (is_atomic (doc)) return false;
+    if (!(doc == "DOCUMENT")) return false;
+    if (N (doc) == 0) return false;
 
-    tree& para = et[0];          // the current paragraph (a CONCAT in a new doc)
+    tree& para = doc[0];         // the current paragraph (a CONCAT in a new doc)
     /* Already a heading? nothing to do (idempotent).  Use the tree==const char*
        operator (auto is_atomic check, no inactive-union access) rather than
        as_string(L(para)) / is_func(para,"CONCAT"), which would touch the
@@ -200,6 +209,7 @@ apply_markdown_heading_conversion (tree& et) {
         if (!(is_atomic (para[j]) && is_empty (as_string (para[j]))))
             heading << para[j];
 
-    et[0] = heading;     // slot 0 preserved; inner CONCAT layer removed
+    doc[0] = heading;    // slot 0 preserved; inner CONCAT layer removed
+    out_p = rp * 0;
     return true;
 }
