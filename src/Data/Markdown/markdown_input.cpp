@@ -13,7 +13,21 @@
 #include "tree.hpp"
 #include "tree_helper.hpp"
 
+#include <cstdio>
+
 using namespace moebius;
+
+/* TEMPORARY DEBUG (B.4 diagnosis) — prints every step of the markdown
+   transparent-input pipeline to stderr.  Remove once the "typed markdown
+   does not convert" bug is fixed.  Enable with -DMD_DEBUG=1 or by flipping
+   the constant below to 1. */
+#ifndef MD_DEBUG
+#define MD_DEBUG 1
+#endif
+#define MD_LOG(...) do { if (MD_DEBUG) { fprintf (stderr, "[MD] " __VA_ARGS__); fflush (stderr); } } while (0)
+
+/* Moebius string has no c_str(): use as_charp (from lolly string.hpp). */
+#define MD_S(s) as_charp (s)
 
 /******************************************************************************
  * Check if a tree has any structural formatting
@@ -63,12 +77,22 @@ collect_text (tree t, string& out) {
  ******************************************************************************/
 static tree*
 search_concat_parent (tree& et, path tp, path& out_p) {
+    MD_LOG ("  walk: tp=%s\n", MD_S (as_string (tp)));
     path p = tp;
     while (!is_nil (p)) {
         p = path_up (p);
-        if (is_nil (p) || !has_subtree (et, p)) break;
+        if (is_nil (p) || !has_subtree (et, p)) {
+            MD_LOG ("  walk: stop at p=%s (nil or no subtree)\n",
+                    MD_S (as_string (p)));
+            break;
+        }
         tree* node = &subtree (et, p);
-        if (is_atomic (*node)) continue;
+        if (is_atomic (*node)) {
+            MD_LOG ("  walk: p=%s label=<atomic>\n", MD_S (as_string (p)));
+            continue;
+        }
+        MD_LOG ("  walk: p=%s label=%s\n", MD_S (as_string (p)),
+                MD_S (as_string (L (*node))));
         if (*node == "CONCAT") {
             out_p = p;
             return node;
@@ -90,10 +114,14 @@ search_concat_parent (tree& et, path tp, path& out_p) {
  ******************************************************************************/
 bool
 apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
+    MD_LOG ("inline: enter tp=%s\n", MD_S (as_string (tp)));
     if (is_nil (tp)) return false;
 
     path parent_p;
     tree* pp = search_concat_parent (et, tp, parent_p);
+    MD_LOG ("inline: search_concat_parent -> %s (pp=%p)\n",
+            parent_p == path () ? "NOT FOUND" : MD_S (as_string (parent_p)),
+            (void*) pp);
     if (pp == NULL) return false;
     tree& parent = *pp;
 
@@ -104,17 +132,23 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
     /* Collect all text from the CONCAT. */
     string text;
     collect_text (parent, text);
+    MD_LOG ("inline: text=\"%s\" len=%d\n", MD_S (text), N (text));
     if (is_empty (text)) return false;
 
     /* Incomplete input (e.g. "**bold" without closing) stays plain text. */
-    if (!is_complete_markdown_input (text)) return false;
+    bool complete = is_complete_markdown_input (text);
+    MD_LOG ("inline: is_complete_markdown_input=%d\n", (int) complete);
+    if (!complete) return false;
 
     md_parse_result result = try_parse_inline_markdown (text);
-    if (!has_formatting (result.result)) return false;
+    bool fmt = has_formatting (result.result);
+    MD_LOG ("inline: parse produced formatting=%d\n", (int) fmt);
+    if (!fmt) return false;
 
     /* Replace the CONCAT content with the parsed structure (idempotent). */
     parent = result.result;
     out_p = parent_p;
+    MD_LOG ("inline: CONVERTED -> out_p=%s\n", MD_S (as_string (out_p)));
     return true;
 }
 
@@ -146,9 +180,11 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
  ******************************************************************************/
 bool
 apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
+    MD_LOG ("heading: enter rp=%s\n", MD_S (as_string (rp)));
     if (is_nil (rp) || !has_subtree (et, rp)) return false;
     tree& doc = subtree (et, rp);
     if (is_atomic (doc)) return false;
+    MD_LOG ("heading: doc=%s\n", MD_S (as_string (L (doc))));
     if (!(doc == "DOCUMENT")) return false;
     if (N (doc) == 0) return false;
 
@@ -163,6 +199,7 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
     /* Collect text and locate a leading "#… " marker. */
     string text;
     collect_text (para, text);
+    MD_LOG ("heading: text=\"%s\"\n", MD_S (text));
     int n = N (text);
     int hashes = 0;
     while (hashes < n && text[hashes] == '#') hashes++;
@@ -211,5 +248,7 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
 
     doc[0] = heading;    // slot 0 preserved; inner CONCAT layer removed
     out_p = rp * 0;
+    MD_LOG ("heading: CONVERTED -> out_p=%s tag=%s\n",
+            MD_S (as_string (out_p)), MD_S (tag));
     return true;
 }
