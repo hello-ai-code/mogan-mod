@@ -196,6 +196,7 @@ private:
   bool             chatTabMode;       ///\< 聊天标签页视图是否激活。
   bool             chatSidebarMode;   ///\< AI 聊天侧边栏模式是否激活。
   bool   chatSidebarModeMemory_;      ///\< 记忆用户主动设置的侧边栏模式状态。
+  bool   outlineDockModeMemory_;      ///\< 记忆进入启动页前目录大纲 Dock 是否可见。
   bool   centralWidgetUpdatesFrozen_; ///\< 标签切换期间冻结编辑区更新。
   string currentEditorFile;           ///\< 当前编辑器打开的文件路径。
 

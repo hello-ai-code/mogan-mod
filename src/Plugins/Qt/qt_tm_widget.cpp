@@ -219,7 +219,8 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
       chatTabMode (false), chatSideDock (nullptr),
       chatSidebarToggleBtn (nullptr), outlineDockToggleBtn (nullptr),
       chatSidebarMode (false),
-      chatSidebarModeMemory_ (false), centralWidgetUpdatesFrozen_ (false) {
+      chatSidebarModeMemory_ (false), outlineDockModeMemory_ (false),
+      centralWidgetUpdatesFrozen_ (false) {
   type= texmacs_widget;
 
   main_widget= concrete (::glue_widget (true, true, 1, 1));
@@ -897,7 +898,8 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
                               QDockWidget::DockWidgetClosable);
     outlineDock->setFloating (false);
     outlineDock->setMinimumSize (DpiUtils::scaled (200), 0);
-    outlineDock->setVisible (false);
+    // 默认开启目录大纲（用户偏好），关闭全部文档后由 sync_startup_tab_mode 隐藏
+    outlineDock->setVisible (true);
     mw->addDockWidget (Qt::LeftDockWidgetArea, outlineDock);
 
     // 目录大纲切换浮动按钮（文档区域右上角）
@@ -1154,6 +1156,14 @@ qt_tm_widget_rep::sync_startup_tab_mode () {
       sync_chat_sidebar_mode ();
     }
 
+    // 目录大纲：同样保存状态并隐藏，避免在启动页左侧占据位置
+    if (outlineDock && outlineDock->isVisible ()) {
+      outlineDockModeMemory_= true;
+      outlineDock->setVisible (false);
+    } else if (outlineDock) {
+      outlineDockModeMemory_= false;
+    }
+
     hide_widget_from_layout (editorWidget, layout);
     hide_widget_from_layout (pdfViewerWidget, layout);
     hide_widget_from_layout (chatContentWidget, layout);
@@ -1216,6 +1226,10 @@ qt_tm_widget_rep::sync_startup_tab_mode () {
     if (chatSidebarModeMemory_ && !chatSidebarMode && !chatTabMode) {
       chatSidebarMode= true;
       sync_chat_sidebar_mode ();
+    }
+    // 从首页切回文档时恢复目录大纲 Dock
+    if (outlineDockModeMemory_ && outlineDock && !outlineDock->isVisible ()) {
+      outlineDock->setVisible (true);
     }
   }
 }
@@ -1594,6 +1608,19 @@ qt_tm_widget_rep::update_visibility () {
                                              ? qt_translate ("Open AI Chat")
                                              : qt_translate ("New AI Chat")) +
                                         shortcutHint);
+    }
+  }
+
+  // 目录大纲切换浮动按钮可见性
+  // 启动页 / PDF / 聊天全屏模式下隐藏；文档模式下遵循 toggle 按钮自身的
+  // 显示逻辑（dock 隐藏或 compact 时显示，正常展开时隐藏）。
+  if (outlineDockToggleBtn && outlineDock) {
+    bool modeOk= !startupTabMode && !pdfTabMode && !chatTabMode;
+    bool btnState= outlineDock->isCompactMode () || !outlineDock->isVisible ();
+    outlineDockToggleBtn->setVisible (modeOk && btnState);
+    if (modeOk && btnState) {
+      outlineDockToggleBtn->raise ();
+      position_outline_dock_button ();
     }
   }
 
