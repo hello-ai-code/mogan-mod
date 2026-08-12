@@ -83,6 +83,51 @@ md_escape_text (string s) {
 static void
 export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level);
 
+/* Forward declaration (used by export_with_to_markdown below) */
+static void
+export_single_node (tree t, md_export_context& ctx);
+
+/* Export the CONTENT of a <with|key|value|...> node.
+ *   <with|font-series|bold|content>  →  **content**
+ *   <with|font-shape|italic|content> →  *content*
+ * All other "with" nodes are unwrapped: every leading atomic
+ * (key, value) pair is skipped and only the trailing children are
+ * exported.  This prevents the key/value atoms (font-series, bold,
+ * font-shape, italic, ...) from leaking into the Markdown text
+ * (observed as "font-seriesboldbold" / "font-shapeitalicitalic").
+ * NOTE: a single "with" may carry MULTIPLE (key,value) pairs, e.g.
+ *   <with|font-series|bold|font-shape|italic|content>
+ * so we must skip ALL consecutive atomic pairs, not just the first. */
+static void
+export_with_to_markdown (tree t, md_export_context& ctx) {
+    /* Skip all leading atomic (key,value) pairs */
+    int content_start = 0;
+    while (content_start + 1 < N (t) &&
+           is_atomic (t[content_start]) &&
+           is_atomic (t[content_start + 1]))
+        content_start += 2;
+
+    /* Bold/italic mapping from the FIRST pair */
+    string o;
+    if (content_start >= 2 && is_atomic (t[0]) && is_atomic (t[1])) {
+        string key   = as_string (t[0]);
+        string value = as_string (t[1]);
+        if (key == "font-series" && value == "bold")       o = "**";
+        else if (key == "font-shape" && value == "italic") o = "*";
+    }
+    if (!is_empty (o)) {
+        ctx.result << o;
+        for (int i = content_start; i < N (t); i++)
+            export_single_node (t[i], ctx);
+        ctx.result << o;
+    }
+    else {
+        /* Non-bold/italic "with": unwrap content and export the rest */
+        for (int i = content_start; i < N (t); i++)
+            export_single_node (t[i], ctx);
+    }
+}
+
 /* Export a single tree node to Markdown */
 static void
 export_single_node (tree t, md_export_context& ctx) {
@@ -135,37 +180,11 @@ export_single_node (tree t, md_export_context& ctx) {
             export_single_node (t[i], ctx);
         ctx.result << "**";
     }
-    /* Standard TeXmacs form for bold/italic:
+    /* Standard TeXmacs form for bold/italic and other styled spans:
      *   <with|font-series|bold|...>  and  <with|font-shape|italic|...>
-     * A "with" node may carry MULTIPLE (key,value) pairs, e.g.
-     *   <with|font-series|bold|color|red|content...>
-     * so skip every consecutive atomic (key,value) pair, then export the
-     * remaining children as the actual content. */
-    else if (is_label (t, "with") && N (t) >= 3 &&
-             is_atomic (t[0]) && is_atomic (t[1])) {
-        string key   = as_string (t[0]);
-        string value = as_string (t[1]);
-        string o;
-        if (key == "font-series" && value == "bold")       o = "**";
-        else if (key == "font-shape" && value == "italic") o = "*";
-        if (!is_empty (o)) {
-            ctx.result << o;
-            for (int i = 2; i < N (t); i++)
-                export_single_node (t[i], ctx);
-            ctx.result << o;
-            return;
-        }
-        /* Non-bold/italic "with": unwrap content (skip ALL leading
-         * (key,value) pair atoms, not just the first two) and export
-         * the remainder.  Do NOT fall through to generic export which
-         * would leak the key/value atoms as literal text. */
-        int content_start = 2;
-        while (content_start + 1 < N (t) &&
-               is_atomic (t[content_start]) &&
-               is_atomic (t[content_start + 1]))
-            content_start += 2;
-        for (int i = content_start; i < N (t); i++)
-            export_single_node (t[i], ctx);
+     * (see export_with_to_markdown above) */
+    else if (is_label (t, "with")) {
+        export_with_to_markdown (t, ctx);
         return;
     }
     else if (is_label (t, "code", "verbatim")) {
@@ -283,6 +302,17 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
     if (label == "initial" || label == "style" ||
         label == "references" || label == "auxiliary" ||
         label == "trailer" || label == "body-attrs") {
+        return;
+    }
+
+    /* With: styled span or generic attribute wrapper.
+     * IMPORTANT: this must be handled at BLOCK level too — Mogan can
+     * save <with|font-series|bold|...> directly under DOCUMENT (or a
+     * paragraph), and without this branch the key/value atoms would be
+     * exported as literal text ("font-seriesboldbold").  The actual
+     * content is always exported inline via export_single_node. */
+    if (is_label (t, "with")) {
+        export_with_to_markdown (t, ctx);
         return;
     }
 
