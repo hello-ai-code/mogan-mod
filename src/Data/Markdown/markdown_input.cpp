@@ -65,23 +65,33 @@ collect_text (tree t, string& out) {
 }
 
 /******************************************************************************
- * Locate the nearest CONCAT ancestor of the cursor path.
+ * Locate the paragraph container of the cursor path.
+ *
+ * Mogan stores paragraphs in TWO shapes (confirmed by [MD] debug logs):
+ *   1. DOCUMENT -> CONCAT -> atomic(...)     multi-atom paragraph (TeXmacs
+ *      style), or
+ *   2. DOCUMENT -> atomic(...)               SINGLE-ATOM paragraph WITHOUT a
+ *      CONCAT wrapper!  This is the common case while typing plain text:
+ *      the debug log shows "walk: p=1.0 label=<atomic>" followed directly
+ *      by "walk: p=1 label=document" — there is NO concat level at all.
  *
  * WARNING — parent_subtree (et, tp) is NOT usable here:
- *   tp is a FULL cursor path (e.g. (0).(0).(k): DOCUMENT[0] = CONCAT,
- *   CONCAT[0] = text atom, k = char).  parent_subtree() strips only the LAST
- *   item (k), therefore it returns the text ATOM (CONCAT[0]), which is atomic
- *   -> apply_markdown_inline_conversion() silently bailed out on
+ *   tp is a FULL cursor path (e.g. (0).(0).(k): DOCUMENT[0] = CONCAT (or
+ *   atomic), CONCAT[0] = text atom, k = char).  parent_subtree() strips only
+ *   the LAST item (k), therefore it returns the text ATOM (CONCAT[0]), which
+ *   is atomic -> apply_markdown_inline_conversion() silently bailed out on
  *   "is_atomic (parent)" and never converted anything.
  *
  *   We walk upwards from tp, one level at a time, until we hit a compound
- *   CONCAT container (the paragraph).  Single-atom paragraphs are their own
- *   CONCAT's first child; multi-atom paragraphs may wrap the cursor deeper.
+ *   CONCAT container (the paragraph).  If we hit DOCUMENT before any CONCAT,
+ *   the paragraph is DOCUMENT's direct ATOMIC child (shape 2) — we return
+ *   that atomic node as the container.
  ******************************************************************************/
 static tree*
 search_concat_parent (tree& et, path tp, path& out_p) {
     MD_LOG ("  walk: tp=%s\n", MD_S (as_string (tp)));
     path p = tp;
+    path last_atom;   /* last atomic path seen while climbing (for shape 2) */
     while (!is_nil (p)) {
         p = path_up (p);
         if (is_nil (p) || !has_subtree (et, p)) {
@@ -92,6 +102,7 @@ search_concat_parent (tree& et, path tp, path& out_p) {
         tree* node = &subtree (et, p);
         if (is_atomic (*node)) {
             MD_LOG ("  walk: p=%s label=<atomic>\n", MD_S (as_string (p)));
+            last_atom = p;
             continue;
         }
         MD_LOG ("  walk: p=%s label=%s\n", MD_S (as_string (p)),
@@ -100,6 +111,19 @@ search_concat_parent (tree& et, path tp, path& out_p) {
             out_p = p;
             return node;
         }
+        if (is_func (*node, DOCUMENT)) {
+            /* Shape 2: single-atom paragraph, no CONCAT wrapper.
+               The paragraph is the atomic child we passed through whose
+               parent is this DOCUMENT. */
+            if (!is_nil (last_atom) && path_up (last_atom) == p) {
+                MD_LOG ("  walk: single-atom paragraph at p=%s\n",
+                        MD_S (as_string (last_atom)));
+                out_p = last_atom;
+                return &subtree (et, last_atom);
+            }
+            break;
+        }
+        /* Other compound (with/strong/em/...): keep climbing */
     }
     out_p = path ();
     return NULL;
@@ -109,9 +133,11 @@ search_concat_parent (tree& et, path tp, path& out_p) {
  * Core entry point: apply the Markdown inline patterns at the cursor.
  *
  * Called from edit_interface_rep::apply_changes() on pure tree changes
- * (typing).  We examine the CONCAT ancestor of the cursor position; if it is
- * plain text forming a complete inline Markdown pattern, we replace the
- * CONCAT's content with the parsed TeXmacs formatting tree.
+ * (typing).  We examine the paragraph container of the cursor position
+ * (a CONCAT for multi-atom paragraphs, or a bare ATOMIC for single-atom
+ * paragraphs — both shapes occur in Mogan); if it is plain text forming a
+ * complete inline Markdown pattern, we replace the container's content
+ * with the parsed TeXmacs formatting tree.
  *
  * Returns true if a conversion was performed (caller re-typesets).
  ******************************************************************************/
@@ -128,11 +154,11 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
     if (pp == NULL) return false;
     tree& parent = *pp;
 
-    /* Only operate on a plain-text CONCAT container.
+    /* Only operate on a plain-text paragraph container (CONCAT or atomic).
        Avoid flattening nodes that already carry structure. */
     if (has_formatting (parent)) return false;
 
-    /* Collect all text from the CONCAT. */
+    /* Collect all text from the container. */
     string text;
     collect_text (parent, text);
     MD_LOG ("inline: text=\"%s\" len=%d\n", MD_S (text), N (text));
@@ -148,7 +174,7 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
     MD_LOG ("inline: parse produced formatting=%d\n", (int) fmt);
     if (!fmt) return false;
 
-    /* Replace the CONCAT content with the parsed structure (idempotent). */
+    /* Replace the container content with the parsed structure (idempotent). */
     parent = result.result;
     out_p = parent_p;
     MD_LOG ("inline: CONVERTED -> out_p=%s\n", MD_S (as_string (out_p)));
@@ -191,11 +217,14 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
     if (!is_func (doc, DOCUMENT)) return false;
     if (N (doc) == 0) return false;
 
-    tree& para = doc[0];         // the current paragraph (a CONCAT in a new doc)
+    tree& para = doc[0];         // the current paragraph (CONCAT or single atom)
+    bool para_is_atomic = is_atomic (para);
     /* Already a heading? nothing to do (idempotent).  Use is_func (para,
        CONCAT): the compound-label test must NOT use `para == "CONCAT"` (the
-       lolly operator== (tree, const char*) only matches atomic nodes). */
-    if (!is_func (para, CONCAT)) return false;
+       lolly operator== (tree, const char*) only matches atomic nodes).
+       NOTE: Mogan stores a single-atom paragraph WITHOUT a CONCAT wrapper
+       (DOCUMENT -> atomic), so accept plain atomic paragraphs as well. */
+    if (!para_is_atomic && !is_func (para, CONCAT)) return false;
     if (has_formatting (para)) return false;   // don't clobber existing structure
 
     /* Collect text and locate a leading "#… " marker. */
@@ -220,35 +249,41 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
     default: tag = "subsubparagraph"; break;
     }
 
-    /* Drop the leading "# " from the raw text atoms.  We walk the CONCAT's
-       text atoms; each atom is a string label.  Skip 'after' chars total,
-       trimming the atom where the marker ends. */
-    int k = 0;
-    for (; k < N (para); k++) {
-        if (!is_atomic (para[k])) { after = 0; break; }   // safety: non-text before marker
-        string s = as_string (para[k]);
-        int sl = N (s);
-        if (sl < after) {
-            after -= sl;
-            para[k] = tree ("");
-            if (after <= 0) break;       // marker fully consumed across atoms
-        }
-        else { para[k] = tree (s (after, sl)); after = 0; break; }
-    }
-    if (after != 0) return false;     // marker split across atoms in an unexpected way
-
-    /* Build the heading node with compound(tag, …) — same shape as the B.1
-       import converter.  Reconstruct into a temporary, then assign into the
-       SAME DOCUMENT slot (et[0]) so the cursor path tp=(0).(0).k keeps its
-       outer index 0 valid.  We never reassign para (an lvalue ref) to a new
-       tree, and never write L(para)=… (union-label assignment is not portable
-       on MSVC), hence the explicit rebuild. */
+    /* Drop the leading "# " from the raw text. */
     tree heading = compound (tag);
-    for (int j = 0; j < N (para); j++)
-        if (!(is_atomic (para[j]) && is_empty (as_string (para[j]))))
-            heading << para[j];
+    if (para_is_atomic) {
+        /* Single-atom paragraph: strip the label directly. */
+        string s = as_string (para);
+        string rest = s (after, N (s));
+        if (!is_empty (rest)) heading << tree (rest);
+    }
+    else {
+        /* CONCAT paragraph: walk its text atoms, trimming the atom where
+           the marker ends.  If an atom is shorter than the remaining
+           marker, it is entirely part of the marker -> blank it out. */
+        for (int k = 0; k < N (para); k++) {
+            if (!is_atomic (para[k])) { after = 0; break; } // safety: non-text
+            string s = as_string (para[k]);
+            int sl = N (s);
+            if (sl < after) {
+                after -= sl;
+                para[k] = tree ("");      // whole atom is marker text
+            }
+            else {
+                para[k] = tree (s (after, sl));  // keep the tail after marker
+                after = 0;
+                break;
+            }
+        }
+        if (after != 0) return false; // marker split across atoms unexpectedly
+        for (int j = 0; j < N (para); j++)
+            if (!(is_atomic (para[j]) && is_empty (as_string (para[j]))))
+                heading << para[j];
+    }
 
-    doc[0] = heading;    // slot 0 preserved; inner CONCAT layer removed
+    /* Assign into the SAME DOCUMENT slot (doc[0]) so the cursor path
+       tp=(rp*0).k keeps its outer index 0 valid. */
+    doc[0] = heading;    // slot 0 preserved; inner CONCAT/atomic layer replaced
     out_p = rp * 0;
     MD_LOG ("heading: CONVERTED -> out_p=%s tag=%s\n",
             MD_S (as_string (out_p)), MD_S (tag));
