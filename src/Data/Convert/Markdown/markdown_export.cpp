@@ -159,8 +159,10 @@ export_single_node (tree t, md_export_context& ctx) {
 
     string label = as_string (L (t));
 
-    /* Handle CONCAT: just export children sequentially */
-    if (label == "CONCAT") {
+    /* Handle CONCAT: just export children sequentially.
+     * NOTE: as_string(L(t)) returns the DRD name ("concat", lowercase), so
+     * the comparison must use lowercase — the old `== "CONCAT"` never matched. */
+    if (label == "concat") {
         for (int i = 0; i < N (t); i++)
             export_single_node (t[i], ctx);
         return;
@@ -265,8 +267,9 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
 
     string label = as_string (L (t));
 
-    /* Document: flatten and export all paragraphs */
-    if (label == "DOCUMENT") {
+    /* Document: flatten and export all paragraphs.
+     * NOTE: lowercase — as_string(L(t)) returns the DRD name "document". */
+    if (label == "document") {
         for (int i = 0; i < N (t); i++)
             export_tree_to_markdown (t[i], ctx, indent_level);
         return;
@@ -316,8 +319,8 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Concat: export children on same logical line */
-    if (label == "CONCAT") {
+    /* Concat: export children on same logical line (lowercase DRD name) */
+    if (label == "concat") {
         for (int i = 0; i < N (t); i++)
             export_single_node (t[i], ctx);
         return;
@@ -445,8 +448,10 @@ export_tree_to_markdown (tree t, md_export_context& ctx, int indent_level) {
         return;
     }
 
-    /* Paragraph-like structures (flatten content) */
-    if (label == "PARA" || label == "quote*") {
+    /* Paragraph-like structures (flatten content).
+     * NOTE: lowercase "para" — the DRD registration name is "para", the old
+     * `== "PARA"` never matched (as_string(L(t)) returns "para"). */
+    if (label == "para" || label == "quote*") {
         int start = 0;
         while (start < N (t) && t[start] == "")
             start++;

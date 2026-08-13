@@ -39,8 +39,11 @@ static bool
 has_formatting (tree t) {
     if (is_atomic (t)) return false;
     if (N (t) == 0) return false;
-    string label = as_string (L (t));
-    if (label != "CONCAT") return true;
+    /* Compound-label test must use is_func (t, CONCAT), NOT `t == "CONCAT"`:
+       the lolly operator== (tree, const char*) only matches ATOMIC nodes
+       (t->op == STRING), so it is always false for a compound CONCAT, and
+       the DRD label string is lowercase "concat" anyway. */
+    if (!is_func (t, CONCAT)) return true;
     for (int i = 0; i < N (t); i++) {
         if (has_formatting (t[i])) return true;
     }
@@ -93,7 +96,7 @@ search_concat_parent (tree& et, path tp, path& out_p) {
         }
         MD_LOG ("  walk: p=%s label=%s\n", MD_S (as_string (p)),
                 MD_S (as_string (L (*node))));
-        if (*node == "CONCAT") {
+        if (is_func (*node, CONCAT)) {
             out_p = p;
             return node;
         }
@@ -185,15 +188,14 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
     tree& doc = subtree (et, rp);
     if (is_atomic (doc)) return false;
     MD_LOG ("heading: doc=%s\n", MD_S (as_string (L (doc))));
-    if (!(doc == "DOCUMENT")) return false;
+    if (!is_func (doc, DOCUMENT)) return false;
     if (N (doc) == 0) return false;
 
     tree& para = doc[0];         // the current paragraph (a CONCAT in a new doc)
-    /* Already a heading? nothing to do (idempotent).  Use the tree==const char*
-       operator (auto is_atomic check, no inactive-union access) rather than
-       as_string(L(para)) / is_func(para,"CONCAT"), which would touch the
-       inactive union member or pass a string where an int arity is expected. */
-    if (!(para == "CONCAT")) return false;
+    /* Already a heading? nothing to do (idempotent).  Use is_func (para,
+       CONCAT): the compound-label test must NOT use `para == "CONCAT"` (the
+       lolly operator== (tree, const char*) only matches atomic nodes). */
+    if (!is_func (para, CONCAT)) return false;
     if (has_formatting (para)) return false;   // don't clobber existing structure
 
     /* Collect text and locate a leading "#… " marker. */

@@ -489,7 +489,10 @@ markdown_document_to_tree (string s) {
      */
     tree body= markdown_to_tree (string (s));
     tree b   = compound ("body");
-    if (is_compound (body, "DOCUMENT"))
+    /* is_document (body): check the compound label directly — the old
+     * `is_compound (body, "DOCUMENT")` never matched, because is_compound
+     * compares against the DRD name which is lowercase ("document"). */
+    if (is_document (body))
         for (int i= 0; i < N (body); i++)
             b << body[i];
     else
