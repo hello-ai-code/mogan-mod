@@ -25,10 +25,13 @@
  * @param tp    The cursor path (must be non-nil)
  * @param out_p On success, the path of the modified CONCAT node
  *              (relative to et, e.g. (0).(1)); unchanged otherwise.
+ * @param out_tp On success, the new cursor position (valid path inside
+ *              the converted subtree); unchanged otherwise.
  * @return      true if conversion was performed
  */
 bool
-apply_markdown_inline_conversion (tree& et, path tp, path& out_p);
+apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
+                                  path& out_tp);
 
 /*
  * B.4.1 Block-level heading conversion.
@@ -50,9 +53,12 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p);
  * @param rp    Path of the DOCUMENT root inside et
  * @param out_p On success, the absolute path (relative to et) of the modified
  *              node (rp * 0); unchanged otherwise.
+ * @param out_tp On success, the new cursor position (valid path inside
+ *              the converted heading); unchanged otherwise.
  * @return      true if a heading conversion was performed
  */
 bool
-apply_markdown_heading_conversion (tree& et, path rp, path& out_p);
+apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
+                                   path& out_tp);
 
 #endif /* defined MARKDOWN_INPUT_H */

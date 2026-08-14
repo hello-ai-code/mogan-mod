@@ -11,6 +11,7 @@
 #include "markdown_inline_patterns.hpp"
 #include "path.hpp"
 #include "tree.hpp"
+#include "tree_cursor.hpp"
 #include "tree_helper.hpp"
 
 #include <cstdio>
@@ -142,7 +143,8 @@ search_concat_parent (tree& et, path tp, path& out_p) {
  * Returns true if a conversion was performed (caller re-typesets).
  ******************************************************************************/
 bool
-apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
+apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
+                                  path& out_tp) {
     MD_LOG ("inline: enter tp=%s\n", MD_S (as_string (tp)));
     if (is_nil (tp)) return false;
 
@@ -177,7 +179,15 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
     /* Replace the container content with the parsed structure (idempotent). */
     parent = result.result;
     out_p = parent_p;
-    MD_LOG ("inline: CONVERTED -> out_p=%s\n", MD_S (as_string (out_p)));
+    /* Move the cursor to the END of the converted subtree.  The old tp
+       pointed into the plain-text atom (e.g. (0).(0).(8) for "**bold**");
+       after the morph the paragraph is CONCAT(strong("bold")) and the old
+       path is out of bounds (the crash the user reported).  end(et, p)
+       computes the last accessible cursor position inside the converted
+       paragraph, which is where the user keeps typing. */
+    out_tp = end (et, parent_p);
+    MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s\n",
+            MD_S (as_string (out_p)), MD_S (as_string (out_tp)));
     return true;
 }
 
@@ -208,7 +218,8 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p) {
  * IDEMPOTENT: no-op when doc[0] is already a section/subsection/etc.
  ******************************************************************************/
 bool
-apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
+apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
+                                   path& out_tp) {
     MD_LOG ("heading: enter rp=%s\n", MD_S (as_string (rp)));
     if (is_nil (rp) || !has_subtree (et, rp)) return false;
     tree& doc = subtree (et, rp);
@@ -285,7 +296,14 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p) {
        tp=(rp*0).k keeps its outer index 0 valid. */
     doc[0] = heading;    // slot 0 preserved; inner CONCAT/atomic layer replaced
     out_p = rp * 0;
-    MD_LOG ("heading: CONVERTED -> out_p=%s tag=%s\n",
-            MD_S (as_string (out_p)), MD_S (tag));
+    /* Move the cursor to the END of the converted heading.  The old tp
+       pointed into the plain-text atom (e.g. (0).(0).(2) after typing "# ");
+       the morphed doc[0] is now a compound section node whose arity may be
+       0 (empty heading) or 1 (text), so the old path is out of bounds.
+       end(et, rp*0) gives the last accessible cursor position inside the
+       heading — the user keeps typing there. */
+    out_tp = end (et, rp * 0);
+    MD_LOG ("heading: CONVERTED -> out_p=%s out_tp=%s tag=%s\n",
+            MD_S (as_string (out_p)), MD_S (as_string (out_tp)), MD_S (tag));
     return true;
 }

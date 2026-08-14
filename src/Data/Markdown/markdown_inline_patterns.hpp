@@ -94,12 +94,18 @@ unescape_markers (string s) {
  * Pattern handlers
  ******************************************************************************/
 
-/* Parse **text** → strong node */
+/* Parse **text** → strong node.
+   NOTE: do NOT use `tree ("strong", 1)`: the lolly_tree constructor
+   `lolly_tree (lolly_tree<T> t, int n)` is selected (implicit conversion
+   of the const char* to a STRING atom first), so the resulting node gets
+   op = STRING (0) and is_atomic() returns true — the node is treated as
+   plain text and has_formatting() never sees it.  Use compound() instead
+   (same as markdown_import.cpp). */
 static tree
 parse_strong (string s, int start, int end) {
     string content = unescape_markers (s (start + 2, end - 2));
     if (is_empty (content)) return tree ("");
-    return tree ("strong", 1) << content;
+    return compound ("strong", tree (content));
 }
 
 /* Parse *text* → em node */
@@ -107,7 +113,7 @@ static tree
 parse_emphasis (string s, int start, int end) {
     string content = unescape_markers (s (start + 1, end - 1));
     if (is_empty (content)) return tree ("");
-    return tree ("em", 1) << content;
+    return compound ("em", tree (content));
 }
 
 /* Parse code (backtick) -> code/verbatim node */
@@ -115,7 +121,7 @@ static tree
 parse_inline_code (string s, int start, int end) {
     string content = s (start + 1, end - 1);
     /* No unescaping for code blocks - literal content */
-    return tree ("code", 1) << content;
+    return compound ("code", tree (content));
 }
 
 /* Parse [text](url) → hlink node */
@@ -144,9 +150,7 @@ parse_link (string s, int start, int end) {
         return tree (s (start, end));
     }
     
-    tree link_node ("hlink", 2);
-    link_node[0] = tree (text);
-    link_node[1] = tree (url);
+    tree link_node = compound ("hlink", tree (text), tree (url));
     return link_node;
 }
 
@@ -155,7 +159,7 @@ static tree
 parse_strikeout (string s, int start, int end) {
     string content = unescape_markers (s (start + 2, end - 2));
     if (is_empty (content)) return tree ("");
-    return tree ("strikeout", 1) << content;
+    return compound ("strikeout", tree (content));
 }
 
 /* Parse ![](url) → image node */
@@ -187,10 +191,7 @@ parse_image (string s, int start, int end) {
         return tree (s (start, end));
     }
     
-    tree image_node ("image", 3);
-    image_node[0] = tree ("");  /* Empty label */
-    image_node[1] = tree (src);
-    image_node[2] = tree (alt);
+    tree image_node = compound ("image", tree (""), tree (src), tree (alt));
     return image_node;
 }
 
