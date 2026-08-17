@@ -1,0 +1,290 @@
+# .github/workflows/ci-build.yml
+# 分层 CI：Cache-Only → Compile-Matrix → Package-Publish
+#
+# 目标：
+#   1. Cache-Only  – 预装 xmake、下载依赖、预热缓存 → 5 min
+#   2. Compile-Matrix – 矩阵化并行编译每个子模块 → 8-10 min
+#   3. Package-Publish – 只在 Compile 成功后执行，负责打包发布 → 7 min
+#
+# 总时长：首次 20-25 min，增量 2-5 min
+
+name: Mogan CI (Build Matrix)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'src/**'
+      - 'TeXmacs/**'
+      - 'xmake.lua'
+      - 'xmake/packages.lua'
+      - '.github/workflows/ci-build.yml'
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: 🗑️ 清除缓存
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-windows
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------
+  # Job 1: Cache-Only (依赖安装 + 环境预热)
+  # ------------------------------------------------------------
+  cache:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    outputs:
+      cache-key: ${{ steps.set-key.outputs.key }}
+    steps:
+      - name: Clear cache (if requested)
+        if: ${{ github.event.inputs.clear_cache == 'true' }}
+        run: |
+          Remove-Item -Recurse -Force "${{ github.workspace }}\.xmake-global" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "${{ github.workspace }}\build" -ErrorAction SilentlyContinue
+        
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: v3.0.4
+        
+      - name: Update repo
+        run: xrepo update-repo
+        
+      - name: Checkout code
+        uses: actions/checkout@v7
+        
+      - name: Set xmake global dir
+        run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
+        
+      # ---- 依次缓存每个依赖，避免哈希冲突 ----
+      - name: Cache lolly
+        id: cache-lolly
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\lolly
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-lolly-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache libiconv
+        id: cache-libiconv
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\libiconv
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-libiconv-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache libjpeg
+        id: cache-libjpeg
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\libjpeg
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-libjpeg-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache freetype
+        id: cache-freetype
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\freetype
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-freetype-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache png
+        id: cache-png
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\png
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-png-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache curl
+        id: cache-curl
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\curl
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-curl-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache mupdf
+        id: cache-mupdf
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\mupdf
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-mupdf-${{ hashFiles('xmake/packages.lua') }}
+        
+      - name: Cache pdfhummus
+        id: cache-pdfhummus
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages\pdfhummus
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-pdfhummus-${{ hashFiles('xmake/packages.lua') }}
+      
+      - name: Set key
+        id: set-key
+        run: echo "key=xmake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}" >> $env:GITHUB_ENV
+      
+      - name: Save all caches
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages
+          key: ${{ env.key }}
+      
+      - name: Summary
+        run: Write-Host "✅ Cache job complete"
+
+  # ------------------------------------------------------------
+  # Job 2: Compile-Matrix (矩阵化并行编译)
+  # ------------------------------------------------------------
+  compile:
+    needs: cache
+    runs-on: windows-2025
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [qt_core, qt_gui, lolly, pdfhummus]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        
+      - name: Restore build cache
+        id: cache-build
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\build
+          key: build-${{ needs.cache.outputs.cache-key }}-${{ matrix.target }}-${{ hashFiles('src/**', 'xmake.lua') }}
+        
+      - name: Restore xrepo packages cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
+        
+      - name: Set xmake global dir
+        run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
+        
+      - name: Configure
+        run: |
+          xmake config --yes -m release `
+            --text_toolbar=false `
+            --tutorial=false `
+            --debug_with_timestamp=false
+        
+      - name: Build ${{ matrix.target }}
+        run: |
+          xmake build -m release -t ${{ matrix.target }}
+          Write-Host "✅ ${{ matrix.target }} built"
+      
+      - name: Save build cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\build
+          key: ${{ steps.cache-build.outputs.cache-primary-key }}
+      
+      - name: Upload ${{ matrix.target }} artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}-artifact
+          path: build/packages/${{ matrix.target }}/**
+          retention-days: 7
+
+  # ------------------------------------------------------------
+  # Job 3: Package-Publish (合并 + 发布)
+  # ------------------------------------------------------------
+  package:
+    needs: [cache, compile]
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        
+      - name: Restore xrepo packages cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.xmake-global\packages
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
+        
+      - name: Set xmake global dir
+        run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
+        
+      - name: Download all target artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+        
+      - name: Merge artifacts
+        run: |
+          # 合并所有目标产物到 build 目录
+          $targets = @("qt_core", "qt_gui", "lolly", "pdfhummus")
+          foreach ($t in $targets) {
+            $src = "artifacts\$t-artifact"
+            $dst = "build/packages/$t"
+            if (Test-Path $src) {
+              Copy-Item -Path $src\*\*\* -Destination $dst -Force -Recurse
+              Write-Host "Merged $t"
+            }
+          }
+        
+      - name: Configure & Install (stem)
+        run: |
+          xmake config --yes -m release `
+            --text_toolbar=false `
+            --tutorial=false `
+            --debug_with_timestamp=false
+          xmake build -m release -t stem
+          xmake install -m release -t stem
+          Write-Host "✅ Stem built"
+        
+      - name: Generate Installer
+        run: |
+          xmake pack --yes -m release stem
+          Write-Host "✅ Pack complete"
+        
+      - name: Package portable ZIP
+        run: |
+          $pkgDir = "build\packages\stem"
+          if (Test-Path $pkgDir) {
+            Compress-Archive -Path "$pkgDir\*" -DestinationPath mogan-turbo-portable.zip -Force
+            Write-Host "✅ Portable ZIP created"
+          }
+        
+      - name: Generate release tag
+        shell: pwsh
+        run: |
+          $date = Get-Date -Format "yyyyMMdd"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          $tag = "build-$date-$sha"
+          echo "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create "${{ env.RELEASE_TAG }}" `
+            --repo ${{ github.repository }} `
+            --title "Mogan Build ${{ env.RELEASE_TAG }}" `
+            --notes "自动构建 #${{ github.run_number }}。自动拆分矩阵 CI，支持增量编译。" `
+            --target ${{ github.sha }}
+          
+          $installer = Get-Item "build\xpack\stem\*.exe" | Select-Object -First 1
+          if ($installer) {
+            gh release upload "${{ env.RELEASE_TAG }}" $installer.FullName --repo ${{ github.repository }}
+            Write-Host "✅ Installer uploaded"
+          }
+          if (Test-Path "mogan-turbo-portable.zip") {
+            gh release upload "${{ env.RELEASE_TAG }}" "mogan-turbo-portable.zip" --repo ${{ github.repository }}
+            Write-Host "✅ ZIP uploaded"
+          }
+      
+      - name: Summary
+        run: |
+          Write-Host "========================================="
+          Write-Host "  ✅ Package & Publish Complete"
+          Write-Host "========================================="
