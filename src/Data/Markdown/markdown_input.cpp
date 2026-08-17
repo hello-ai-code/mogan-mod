@@ -191,11 +191,12 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
        (e.g. (0).(0).(8) for "**bold**"); after the morph the paragraph is
        CONCAT(strong("bold")) and the old path is out of bounds. */
     path leaf = parent_p * (N (parent) - 1);
-    while (!is_atomic (et[leaf])) leaf = leaf * (N (et[leaf]) - 1);
+    while (!is_atomic (subtree (et, leaf)))
+        leaf = leaf * (N (subtree (et, leaf)) - 1);
     /* N(tree) is only valid for COMPOUND nodes (CHECK_COMPOUND asserts on
        atoms) — use N(as_string(...)) on the atomic label, the same way
        tree_traverse.cpp positions at the end of a text atom. */
-    out_tp = leaf * N (as_string (et[leaf]));
+    out_tp = leaf * N (as_string (subtree (et, leaf)));
     MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s\n",
             MD_S (as_string (out_p)), MD_S (as_string (out_tp)));
     return true;
