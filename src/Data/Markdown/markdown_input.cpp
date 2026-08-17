@@ -179,13 +179,23 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     /* Replace the container content with the parsed structure (idempotent). */
     parent = result.result;
     out_p = parent_p;
-    /* Move the cursor to the END of the converted subtree.  The old tp
-       pointed into the plain-text atom (e.g. (0).(0).(8) for "**bold**");
-       after the morph the paragraph is CONCAT(strong("bold")) and the old
-       path is out of bounds (the crash the user reported).  end(et, p)
-       computes the last accessible cursor position inside the converted
-       paragraph, which is where the user keeps typing. */
-    out_tp = end (et, parent_p);
+    /* Move the cursor to the END of the converted subtree's LAST LEAF.
+       CRASH FIX (2026-08-17): end(et, parent_p) on CONCAT(strong("bold"))
+       returns the STRONG NODE ITSELF (parent_p.0), not the end of the text
+       inside it.  strong is an enforcing node: the cursor cannot rest on a
+       node, so the next keystroke used an out-of-bounds path and SIGSEGV'd
+       (same family as the empty nullary section() crash in the heading
+       pass).  Instead we descend to the last atomic leaf and position past
+       its text — the same convention tree_traverse.cpp uses for text atoms
+       (path_up(p) * N(label)).  The old tp pointed into the plain-text atom
+       (e.g. (0).(0).(8) for "**bold**"); after the morph the paragraph is
+       CONCAT(strong("bold")) and the old path is out of bounds. */
+    path leaf = parent_p * (N (parent) - 1);
+    while (!is_atomic (et[leaf])) leaf = leaf * (N (et[leaf]) - 1);
+    /* N(tree) is only valid for COMPOUND nodes (CHECK_COMPOUND asserts on
+       atoms) — use N(as_string(...)) on the atomic label, the same way
+       tree_traverse.cpp positions at the end of a text atom. */
+    out_tp = leaf * N (as_string (et[leaf]));
     MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s\n",
             MD_S (as_string (out_p)), MD_S (as_string (out_tp)));
     return true;
