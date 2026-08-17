@@ -106,11 +106,12 @@ jobs:
 
       # ----------------------------------------------------------------
       # 5. Build (only the stem target — the real Mogan executable)
+      #    Note: -m is a config option, NOT a build option; mode is
+      #    already fixed by xmake config -m release above.
       # ----------------------------------------------------------------
       - name: Build
         run: |
-          xmake clean
-          xmake build -vD -m release stem
+          xmake build -vD stem
           Write-Host "✅ Build done"
 
       # ----------------------------------------------------------------
@@ -118,7 +119,7 @@ jobs:
       # ----------------------------------------------------------------
       - name: Install
         run: |
-          xmake install -vD -m release stem
+          xmake install -vD stem
           Write-Host "✅ Install done"
 
       # ----------------------------------------------------------------
@@ -165,7 +166,7 @@ jobs:
       # ----------------------------------------------------------------
       - name: Generate Installer
         run: |
-          xmake pack --yes -vD -m release stem
+          xmake pack --yes -vD stem
           Write-Host "✅ Pack done"
 
       # ----------------------------------------------------------------
