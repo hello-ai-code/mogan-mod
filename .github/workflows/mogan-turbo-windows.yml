@@ -55,7 +55,17 @@ jobs:
           Remove-Item -Recurse -Force "${{ github.workspace }}\build" -ErrorAction SilentlyContinue
 
       # ----------------------------------------------------------
-      # 2. xmake (官方 action)
+      # 2. 安装 ccache (可选，显著加速重复编译)
+      # ----------------------------------------------------------
+      - name: Install ccache
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+          choco install ccache -y
+
+      # ----------------------------------------------------------
+      # 3. xmake (官方 action)
       # ----------------------------------------------------------
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
@@ -66,19 +76,19 @@ jobs:
         run: xrepo update-repo
 
       # ----------------------------------------------------------
-      # 3. 检出代码
+      # 4. 检出代码
       # ----------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v7
 
       # ----------------------------------------------------------
-      # 4. 设置 XMAKE_GLOBALDIR → workspace 内，缓存自包含
+      # 5. 设置 XMAKE_GLOBALDIR → workspace 内，缓存自包含
       # ----------------------------------------------------------
       - name: Set xmake global dir
         run: echo "XMAKE_GLOBALDIR=${{ github.workspace }}\.xmake-global" >> $env:GITHUB_ENV
 
       # ----------------------------------------------------------
-      # 5. 缓存 xrepo 包
+      # 6. 缓存 xrepo 包
       # ----------------------------------------------------------
       - name: Restore xrepo packages cache
         id: cache-xrepo
@@ -86,30 +96,59 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}\.xmake-global\packages
-          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua') }}
+          key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
           restore-keys: |
             xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-
 
       # ----------------------------------------------------------
-      # 6. 配置 — 沿用官方 -m release，加上 turbo 选项
+      # 7. 缓存构建目录（增量编译）
+      # ----------------------------------------------------------
+      - name: Restore build cache
+        id: cache-build
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\build
+          key: build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
+          restore-keys: |
+            build-${{ runner.os }}-${{ runner.arch }}-
+
+      # ----------------------------------------------------------
+      # 8. 配置 — 沿用官方 -m release，加上 turbo 选项 + ccache
       # ----------------------------------------------------------
       - name: Configure
+        env:
+          CCACHE_DIR: ${{ github.workspace }}\.ccache
         run: |
           xmake config --yes -vD -m release `
             --text_toolbar=false `
             --tutorial=false `
-            --debug_with_timestamp=false
+            --debug_with_timestamp=false `
+            --ccache
 
       # ----------------------------------------------------------
-      # 6. 编译
+      # 9. 缓存 ccache 目录
+      # ----------------------------------------------------------
+      - name: Restore ccache cache
+        id: cache-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.ccache
+          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ runner.arch }}-
+
+      # ----------------------------------------------------------
+      # 10. 编译
       # ----------------------------------------------------------
       - name: Build
+        env:
+          CCACHE_DIR: ${{ github.workspace }}\.ccache
         run: |
           xmake build -vD stem
           Write-Host "✅ Build done"
 
       # ----------------------------------------------------------
-      # 7. 安装 — 官方流程！自动部署所有 DLL
+      # 11. 安装 — 官方流程！自动部署所有 DLL
       #    输出到 build/packages/stem/data/bin/
       # ----------------------------------------------------------
       - name: Install
@@ -118,7 +157,7 @@ jobs:
           Write-Host "✅ Install done"
 
       # ----------------------------------------------------------
-      # 8. 安装 Pandoc + Ghostscript + Noto 字体
+      # 12. 安装 Pandoc + Ghostscript + Noto 字体
       #    (照搬官方 CD 流程)
       # ----------------------------------------------------------
       - name: Install pandoc, ghostscript, Noto fonts
@@ -162,7 +201,7 @@ jobs:
           }
 
       # ----------------------------------------------------------
-      # 9. 生成安装包 — 官方流程！产出 NSIS .exe 安装器
+      # 13. 生成安装包 — 官方流程！产出 NSIS .exe 安装器
       #    输出到 build/xpack/stem/*.exe
       # ----------------------------------------------------------
       - name: Generate Installer
@@ -171,7 +210,7 @@ jobs:
           Write-Host "✅ Pack done"
 
       # ----------------------------------------------------------
-      # 10. 查看产物
+      # 14. 查看产物
       # ----------------------------------------------------------
       - name: Inspect outputs
         shell: pwsh
@@ -190,7 +229,7 @@ jobs:
           }
 
       # ----------------------------------------------------------
-      # 11. 上传安装包
+      # 15. 上传安装包
       # ----------------------------------------------------------
       - name: Upload Installer (Artifact)
         uses: actions/upload-artifact@v7
@@ -201,7 +240,7 @@ jobs:
           compression-level: 1
 
       # ----------------------------------------------------------
-      # 12. 再上传一个便携 ZIP（解压即用）
+      # 16. 再上传一个便携 ZIP（解压即用）
       # ----------------------------------------------------------
       - name: Package portable ZIP
         shell: pwsh
@@ -222,7 +261,7 @@ jobs:
           compression-level: 1
 
       # ----------------------------------------------------------
-      # 13. 发布到 GitHub Release
+      # 17. 发布到 GitHub Release
       # ----------------------------------------------------------
       - name: Generate release tag
         shell: pwsh
@@ -280,7 +319,7 @@ jobs:
           Write-Host "✅ Release $tag created and assets uploaded"
 
       # ----------------------------------------------------------
-      # 14. 保存 xrepo 包缓存（即使前面的步骤失败也保存）
+      # 18. 保存 xrepo 包缓存（即使前面的步骤失败也保存）
       # ----------------------------------------------------------
       - name: Save xrepo packages cache
         if: always()
@@ -291,7 +330,27 @@ jobs:
           key: ${{ steps.cache-xrepo.outputs.cache-primary-key }}
 
       # ----------------------------------------------------------
-      # 15. 摘要
+      # 19. 保存构建目录缓存
+      # ----------------------------------------------------------
+      - name: Save build cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\build
+          key: ${{ steps.cache-build.outputs.cache-primary-key }}
+
+      # ----------------------------------------------------------
+      # 20. 保存 ccache 缓存
+      # ----------------------------------------------------------
+      - name: Save ccache cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\.ccache
+          key: ${{ steps.cache-ccache.outputs.cache-primary-key }}
+
+      # ----------------------------------------------------------
+      # 21. 摘要
       # ----------------------------------------------------------
       - name: Summary
         run: |
