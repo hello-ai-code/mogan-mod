@@ -37,28 +37,28 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
  * B.4.1 Block-level heading conversion.
  *
  * Detects a leading "# " / "## " / … / "###### " marker at the start of the
- * first paragraph of the DOCUMENT node at et[rp] and morphs that CONCAT
- * paragraph in place into a TeXmacs section/subsection/… node (stripping the
- * leading "# ").
+ * paragraph containing the cursor and morphs that paragraph in place into a
+ * TeXmacs section/subsection/… node (stripping the leading "# ").
  *
- * NOTE — et is the FULL buffer tree (editor_rep::et, "all TeXmacs trees");
- * rp is the path of the DOCUMENT root inside et (editor_rep::rp).  The
- * DOCUMENT is NOT et itself, hence rp must be supplied by the caller.
+ * The paragraph is located with the same search_concat_parent walk as the
+ * inline pass, so headings convert in ANY paragraph, not just the first one
+ * of the DOCUMENT.  The paragraph node is replaced in place (its path is
+ * preserved), so the outer cursor path stays valid.
  *
- * In-place morph (rather than a structural replace) is deliberate: the cursor
- * path tp used elsewhere in apply_changes() must stay valid, and the DOCUMENT
- * child index 0 is preserved. See markdown_input.cpp for the full rationale.
+ * An empty heading ("# " with nothing after the space) is deliberately NOT
+ * converted: a nullary section() has no legal cursor position, and converting
+ * it crashes on the next keystroke.  We wait for the actual title text.
  *
  * @param et    The editor's full buffer tree
- * @param rp    Path of the DOCUMENT root inside et
+ * @param tp    The cursor path (must be non-nil)
  * @param out_p On success, the absolute path (relative to et) of the modified
- *              node (rp * 0); unchanged otherwise.
+ *              node; unchanged otherwise.
  * @param out_tp On success, the new cursor position (valid path inside
  *              the converted heading); unchanged otherwise.
  * @return      true if a heading conversion was performed
  */
 bool
-apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
+apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
                                    path& out_tp);
 
 #endif /* defined MARKDOWN_INPUT_H */

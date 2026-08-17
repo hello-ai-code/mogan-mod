@@ -198,45 +198,50 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
  * DESIGN NOTE — why "in-place morph" instead of a structural replace:
  *   Mogan stores paragraphs as DOCUMENT children WITHOUT a <paragraph> wrapper:
  *       DOCUMENT -> CONCAT("…text…")   (one CONCAT per paragraph)
- *   et is the FULL buffer tree; rp points at the DOCUMENT root inside et.
- *   When the user types at the start of the first paragraph, the cursor path is
- *       tp = rp * 0 * 0 * k   // DOCUMENT[0] = CONCAT, CONCAT[0] = 1st text atom, k = char
- *   apply_changes() calls this with that tp, then keeps using the SAME tp later
- *   (find_check_cursor(tp), subtree(et, path_up(tp)), …).  If we replaced
- *   DOCUMENT[0] with a brand-new `section` node, the indices would shift (the
- *   CONCAT layer disappears) and tp would address an out-of-bounds position ->
- *   crash.  So we MORPH doc[0] in place: the DOCUMENT child index (0) is
- *   preserved, only the (CONCAT, content) pair is rewritten as (section, content
- *   minus the leading "# ").  The cursor tp stays valid, which is exactly what
- *   transparent input needs.  The exported .md still round-trips correctly via
- *   markdown_export (it iterates DOCUMENT children and looks at each child's tag).
+ *   We locate the paragraph that CONTAINS the cursor with
+ *   search_concat_parent (same routine as the inline pass), then REPLACE that
+ *   paragraph node in place with the heading compound.  Because the paragraph
+ *   keeps its path (parent_p), the DOCUMENT child index does not shift and the
+ *   outer part of tp stays valid — this is what transparent input needs.
+ *   The exported .md still round-trips correctly via markdown_export (it
+ *   iterates DOCUMENT children and looks at each child's tag).
  *
- * TRIGGER: only when the paragraph is a plain-text CONCAT that already starts
- *   with N hashes followed by a space (e.g. the user just typed the space, or
- *   the text begins that way).  We strip the leading "#… " and set the label.
+ * FIX (2026-08-17): the previous implementation hard-coded `doc[0]`, so a
+ *   heading typed in any paragraph OTHER than the first never converted.
+ *   Now we operate on the cursor's own paragraph.
  *
- * IDEMPOTENT: no-op when doc[0] is already a section/subsection/etc.
+ * CRASH FIX (2026-08-17): an EMPTY heading ("# " with nothing after the
+ *   space) is NOT converted.  An empty section() is a nullary compound node:
+ *   end()/correct_cursor() cannot produce a valid cursor inside it (the
+ *   "arity (parent_subtree (t, p)) == 0" shortcut returns p itself, which is
+ *   not a legal cursor on a nullary node), so the next keystroke used a
+ *   stale/out-of-bounds path and SIGSEGV'd.  We wait until the user typed
+ *   the actual title text, then convert — the heading always has arity 1.
+ *
+ * TRIGGER: only when the cursor's paragraph is plain text that already starts
+ *   with N hashes followed by a space AND has at least one character after
+ *   the space.  We strip the leading "#… " and set the label.
+ *
+ * IDEMPOTENT: no-op when the paragraph is already a section/subsection/etc.
  ******************************************************************************/
 bool
-apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
+apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
                                    path& out_tp) {
-    MD_LOG ("heading: enter rp=%s\n", MD_S (as_string (rp)));
-    if (is_nil (rp) || !has_subtree (et, rp)) return false;
-    tree& doc = subtree (et, rp);
-    if (is_atomic (doc)) return false;
-    MD_LOG ("heading: doc=%s\n", MD_S (as_string (L (doc))));
-    if (!is_func (doc, DOCUMENT)) return false;
-    if (N (doc) == 0) return false;
+    MD_LOG ("heading: enter tp=%s\n", MD_S (as_string (tp)));
+    if (is_nil (tp)) return false;
 
-    tree& para = doc[0];         // the current paragraph (CONCAT or single atom)
-    bool para_is_atomic = is_atomic (para);
-    /* Already a heading? nothing to do (idempotent).  Use is_func (para,
-       CONCAT): the compound-label test must NOT use `para == "CONCAT"` (the
-       lolly operator== (tree, const char*) only matches atomic nodes).
-       NOTE: Mogan stores a single-atom paragraph WITHOUT a CONCAT wrapper
-       (DOCUMENT -> atomic), so accept plain atomic paragraphs as well. */
-    if (!para_is_atomic && !is_func (para, CONCAT)) return false;
-    if (has_formatting (para)) return false;   // don't clobber existing structure
+    /* Locate the paragraph the cursor is inside (CONCAT or single atom) —
+       exactly like the inline pass. */
+    path parent_p;
+    tree* pp = search_concat_parent (et, tp, parent_p);
+    MD_LOG ("heading: search_concat_parent -> %s (pp=%p)\n",
+            parent_p == path () ? "NOT FOUND" : MD_S (as_string (parent_p)),
+            (void*) pp);
+    if (pp == NULL) return false;
+    tree& para = *pp;
+
+    /* Only plain-text paragraphs; don't clobber existing structure. */
+    if (has_formatting (para)) return false;
 
     /* Collect text and locate a leading "#… " marker. */
     string text;
@@ -249,6 +254,12 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
     if (hashes >= n || text[hashes] != ' ') return false; // must be "# "
     int after = hashes + 1;                               // skip "# "
 
+    /* CRASH FIX: empty heading ("# " only) stays plain text.  A nullary
+       section() has no legal cursor position; converting now would crash
+       on the next keystroke.  Wait for the title text. */
+    string rest = text (after, n);
+    if (is_empty (rest)) return false;
+
     /* Map level -> TeXmacs tag (keep in sync with markdown_import.cpp). */
     string tag;
     switch (hashes) {
@@ -260,50 +271,18 @@ apply_markdown_heading_conversion (tree& et, path rp, path& out_p,
     default: tag = "subsubparagraph"; break;
     }
 
-    /* Drop the leading "# " from the raw text. */
-    tree heading = compound (tag);
-    if (para_is_atomic) {
-        /* Single-atom paragraph: strip the label directly. */
-        string s = as_string (para);
-        string rest = s (after, N (s));
-        if (!is_empty (rest)) heading << tree (rest);
-    }
-    else {
-        /* CONCAT paragraph: walk its text atoms, trimming the atom where
-           the marker ends.  If an atom is shorter than the remaining
-           marker, it is entirely part of the marker -> blank it out. */
-        for (int k = 0; k < N (para); k++) {
-            if (!is_atomic (para[k])) { after = 0; break; } // safety: non-text
-            string s = as_string (para[k]);
-            int sl = N (s);
-            if (sl < after) {
-                after -= sl;
-                para[k] = tree ("");      // whole atom is marker text
-            }
-            else {
-                para[k] = tree (s (after, sl));  // keep the tail after marker
-                after = 0;
-                break;
-            }
-        }
-        if (after != 0) return false; // marker split across atoms unexpectedly
-        for (int j = 0; j < N (para); j++)
-            if (!(is_atomic (para[j]) && is_empty (as_string (para[j]))))
-                heading << para[j];
-    }
-
-    /* Assign into the SAME DOCUMENT slot (doc[0]) so the cursor path
-       tp=(rp*0).k keeps its outer index 0 valid. */
-    doc[0] = heading;    // slot 0 preserved; inner CONCAT/atomic layer replaced
-    out_p = rp * 0;
-    /* Move the cursor to the END of the converted heading.  The old tp
-       pointed into the plain-text atom (e.g. (0).(0).(2) after typing "# ");
-       the morphed doc[0] is now a compound section node whose arity may be
-       0 (empty heading) or 1 (text), so the old path is out of bounds.
-       end(et, rp*0) gives the last accessible cursor position inside the
-       heading — the user keeps typing there. */
-    out_tp = end (et, rp * 0);
-    MD_LOG ("heading: CONVERTED -> out_p=%s out_tp=%s tag=%s\n",
-            MD_S (as_string (out_p)), MD_S (as_string (out_tp)), MD_S (tag));
+    /* Replace the paragraph in place with the heading (arity 1: text atom).
+       parent_p is preserved, so the outer path indices stay valid. */
+    para = compound (tag, tree (rest));
+    out_p = parent_p;
+    /* Move the cursor to the END of the heading text.  The old tp pointed
+       into the plain-text atom and is out of bounds now; end(et, parent_p)
+       gives the last accessible cursor position inside the heading, which is
+       where the user keeps typing.  Safe because the heading is non-nullary
+       (rest is non-empty). */
+    out_tp = end (et, parent_p);
+    MD_LOG ("heading: CONVERTED -> out_p=%s out_tp=%s tag=%s rest=\"%s\"\n",
+            MD_S (as_string (out_p)), MD_S (as_string (out_tp)), MD_S (tag),
+            MD_S (rest));
     return true;
 }

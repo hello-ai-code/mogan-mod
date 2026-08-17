@@ -1040,9 +1040,11 @@ edit_interface_rep::apply_changes () {
         tp= md_tp;
       }
       // B.4.1 Block-level heading: morph a leading "# " paragraph into a
-      // section. Operates on the DOCUMENT root at rp (child 0) and preserves
-      // the cursor index, so it is safe to run alongside the inline pass.
-      if (apply_markdown_heading_conversion (et, rp, md_p, md_tp)) {
+      // section. Operates on the paragraph containing the cursor (located by
+      // search_concat_parent) and preserves the path, so it is safe to run
+      // alongside the inline pass.  tp is passed (not rp) so headings convert
+      // in ANY paragraph, not only the first one of the DOCUMENT.
+      if (apply_markdown_heading_conversion (et, tp, md_p, md_tp)) {
         typeset_invalidate (md_p);
         tp= md_tp;
       }
