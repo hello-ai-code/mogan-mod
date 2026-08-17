@@ -55,17 +55,7 @@ jobs:
           Remove-Item -Recurse -Force "${{ github.workspace }}\build" -ErrorAction SilentlyContinue
 
       # ----------------------------------------------------------
-      # 2. 安装 ccache (可选，显著加速重复编译)
-      # ----------------------------------------------------------
-      - name: Install ccache
-        shell: pwsh
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-          choco install ccache -y
-
-      # ----------------------------------------------------------
-      # 3. xmake (官方 action)
+      # 2. xmake (官方 action)
       # ----------------------------------------------------------
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
@@ -113,7 +103,7 @@ jobs:
             build-${{ runner.os }}-${{ runner.arch }}-
 
       # ----------------------------------------------------------
-      # 8. 配置 — 沿用官方 -m release，加上 turbo 选项 + ccache
+      # 8. 配置 — 沿用官方 -m release，加上 turbo 选项
       # ----------------------------------------------------------
       - name: Configure
         env:
@@ -122,23 +112,10 @@ jobs:
           xmake config --yes -vD -m release `
             --text_toolbar=false `
             --tutorial=false `
-            --debug_with_timestamp=false `
-            --ccache
+            --debug_with_timestamp=false
 
       # ----------------------------------------------------------
-      # 9. 缓存 ccache 目录
-      # ----------------------------------------------------------
-      - name: Restore ccache cache
-        id: cache-ccache
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ github.workspace }}\.ccache
-          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
-          restore-keys: |
-            ccache-${{ runner.os }}-${{ runner.arch }}-
-
-      # ----------------------------------------------------------
-      # 10. 编译
+      # 11. 编译
       # ----------------------------------------------------------
       - name: Build
         env:
@@ -148,7 +125,7 @@ jobs:
           Write-Host "✅ Build done"
 
       # ----------------------------------------------------------
-      # 11. 安装 — 官方流程！自动部署所有 DLL
+      # 12. 安装 — 官方流程！自动部署所有 DLL
       #    输出到 build/packages/stem/data/bin/
       # ----------------------------------------------------------
       - name: Install
@@ -350,7 +327,7 @@ jobs:
           key: ${{ steps.cache-ccache.outputs.cache-primary-key }}
 
       # ----------------------------------------------------------
-      # 21. 摘要
+      # 22. 摘要
       # ----------------------------------------------------------
       - name: Summary
         run: |
