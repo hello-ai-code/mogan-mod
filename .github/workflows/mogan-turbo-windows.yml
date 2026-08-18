@@ -85,7 +85,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: |
-            ${{ github.workspace }}\.xmake-global\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\cache
           key: xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
           restore-keys: |
             xmake-${{ runner.os }}-${{ runner.arch }}-xrepo-
@@ -101,6 +102,19 @@ jobs:
           key: build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('xmake.lua', 'xmake/packages.lua') }}
           restore-keys: |
             build-${{ runner.os }}-${{ runner.arch }}-
+
+      # ----------------------------------------------------------
+      # 7.5 ccache 缓存（内容哈希增量编译，不受 mtime 影响）
+      #     key 用 sha：每次提交独立条目，restore-keys 回退到最近一次
+      # ----------------------------------------------------------
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.ccache
+          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ runner.arch }}-
 
       # ----------------------------------------------------------
       # 8. 配置 — 沿用官方 -m release，加上 turbo 选项
@@ -303,7 +317,8 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: |
-            ${{ github.workspace }}\.xmake-global\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\cache
           key: ${{ steps.cache-xrepo.outputs.cache-primary-key }}
 
       # ----------------------------------------------------------

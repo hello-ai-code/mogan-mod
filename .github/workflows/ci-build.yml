@@ -77,7 +77,9 @@ jobs:
         id: cache-packages
         uses: actions/cache/restore@v6
         with:
-          path: ${{ github.workspace }}\.xmake-global\packages
+          path: |
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\cache
           key: xmake-${{ runner.os }}-${{ runner.arch }}-packages-${{ hashFiles('xmake.lua', 'xmake/packages.lua', 'xmake/*.lua') }}
           restore-keys: |
             xmake-${{ runner.os }}-${{ runner.arch }}-packages-
@@ -95,9 +97,25 @@ jobs:
             build-${{ runner.os }}-${{ runner.arch }}-
 
       # ----------------------------------------------------------------
+      # 3.5 ccache cache (content-hash incremental, immune to mtime)
+      #     key uses sha: one entry per commit; restore-keys falls back
+      #     to the most recent one.
+      # ----------------------------------------------------------------
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}\.ccache
+          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ runner.arch }}-
+
+      # ----------------------------------------------------------------
       # 4. Configure
       # ----------------------------------------------------------------
       - name: Configure
+        env:
+          CCACHE_DIR: ${{ github.workspace }}\.ccache
         run: |
           xmake config --yes -vD -m release `
             --text_toolbar=false `
@@ -110,6 +128,8 @@ jobs:
       #    already fixed by xmake config -m release above.
       # ----------------------------------------------------------------
       - name: Build
+        env:
+          CCACHE_DIR: ${{ github.workspace }}\.ccache
         run: |
           xmake build -vD stem
           Write-Host "✅ Build done"
@@ -248,16 +268,30 @@ jobs:
           Write-Host "✅ Release created/updated"
 
       # ----------------------------------------------------------------
-      # 12. Save caches
+      # 12. Save caches (each key saved separately so restore can find them)
       # ----------------------------------------------------------------
-      - name: Save caches
+      - name: Save xrepo packages cache
         if: always()
         uses: actions/cache/save@v6
         with:
           path: |
-            ${{ github.workspace }}\.xmake-global\packages
-            ${{ github.workspace }}\build
+            ${{ github.workspace }}\.xmake-global\.xmake\packages
+            ${{ github.workspace }}\.xmake-global\.xmake\cache
           key: ${{ steps.cache-packages.outputs.cache-primary-key }}
+
+      - name: Save build cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\build
+          key: ${{ steps.cache-build.outputs.cache-primary-key }}
+
+      - name: Save ccache cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}\.ccache
+          key: ${{ steps.cache-ccache.outputs.cache-primary-key }}
 
       # ----------------------------------------------------------------
       # 13. Summary
