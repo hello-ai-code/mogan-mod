@@ -295,7 +295,7 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        [MD] log: tp jumped from 1.0.1 back to 1.0.0.14 on a section node).
        Instead descend to the last atomic leaf and position past its text
        — the same convention tree_traverse.cpp uses for text atoms. */
-    path leaf = parent_p * (N (parent) - 1);
+    path leaf = parent_p * (N (parent_p) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
     out_tp = leaf * N (as_string (subtree (et, leaf)));
