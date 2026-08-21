@@ -294,8 +294,15 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        keystroke used an out-of-bounds path and SIGSEGV'd (confirmed by the
        [MD] log: tp jumped from 1.0.1 back to 1.0.0.14 on a section node).
        Instead descend to the last atomic leaf and position past its text
-       — the same convention tree_traverse.cpp uses for text atoms. */
-    path leaf = parent_p * (N (parent_p) - 1);
+       — the same convention tree_traverse.cpp uses for text atoms.
+
+       NOTE (2026-08-21): must use N(para), NOT N(parent_p) — parent_p is a
+       PATH (array<int>): N() on a path returns the PATH LENGTH (e.g. 2 for
+       "1.0"), not the arity of the heading node.  parent_p * (2-1) = 1.0.1
+       is OUT OF BOUNDS for section(rest) (arity 1, only child index 0),
+       and subtree(et, 1.0.1) crashed with SIGSEGV (confirmed in the 8/21
+       md_debug.log).  N(para) = 1, so leaf = parent_p * 0 = the text atom. */
+    path leaf = parent_p * (N (para) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
     out_tp = leaf * N (as_string (subtree (et, leaf)));
