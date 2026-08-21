@@ -13,17 +13,6 @@
 name: Mogan Turbo Build (Windows)
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'src/**'
-      - '!src/Plugins/Macos/**'
-      - '!src/Plugins/Unix/**'
-      - 'TeXmacs/**'
-      - 'xmake.lua'
-      - 'xmake/packages.lua'
-      - '.github/workflows/mogan-turbo-windows.yml'
   workflow_dispatch:
     inputs:
       clear_cache:
