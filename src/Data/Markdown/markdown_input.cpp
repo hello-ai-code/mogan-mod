@@ -286,12 +286,19 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        parent_p is preserved, so the outer path indices stay valid. */
     para = compound (tag, tree (rest));
     out_p = parent_p;
-    /* Move the cursor to the END of the heading text.  The old tp pointed
-       into the plain-text atom and is out of bounds now; end(et, parent_p)
-       gives the last accessible cursor position inside the heading, which is
-       where the user keeps typing.  Safe because the heading is non-nullary
-       (rest is non-empty). */
-    out_tp = end (et, parent_p);
+    /* Move the cursor to the END of the heading text atom.
+       CRASH FIX (2026-08-18): end(et, parent_p) on a section/subsection
+       (an ENFORCING node) returns the enforcing node ITSELF (parent_p.0),
+       not the end of the text inside it — the same defect as the inline
+       pass.  The cursor cannot rest on an enforcing node, so the next
+       keystroke used an out-of-bounds path and SIGSEGV'd (confirmed by the
+       [MD] log: tp jumped from 1.0.1 back to 1.0.0.14 on a section node).
+       Instead descend to the last atomic leaf and position past its text
+       — the same convention tree_traverse.cpp uses for text atoms. */
+    path leaf = parent_p * (N (parent) - 1);
+    while (!is_atomic (subtree (et, leaf)))
+        leaf = leaf * (N (subtree (et, leaf)) - 1);
+    out_tp = leaf * N (as_string (subtree (et, leaf)));
     MD_LOG ("heading: CONVERTED -> out_p=%s out_tp=%s tag=%s rest=\"%s\"\n",
             MD_S (as_string (out_p)), MD_S (as_string (out_tp)), MD_S (tag),
             MD_S (rest));
