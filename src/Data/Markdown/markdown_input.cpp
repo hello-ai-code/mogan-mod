@@ -13,6 +13,7 @@
 #include "tree.hpp"
 #include "tree_cursor.hpp"
 #include "tree_helper.hpp"
+#include "tree_observer.hpp"  // assign(): protocol-correct tree modification
 
 #include <cstdio>
 
@@ -176,8 +177,25 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     MD_LOG ("inline: parse produced formatting=%d\n", (int) fmt);
     if (!fmt) return false;
 
-    /* Replace the container content with the parsed structure (idempotent). */
-    parent = result.result;
+    /* Replace the container content with the parsed structure (idempotent).
+       ROOT-CAUSE FIX (2026-08-26): NEVER assign through a raw C++ reference.
+       lolly's operator= only swaps the rep pointer — no observer announce/
+       notify/detach — so the typesetter bridge, undo stack and ip_observers
+       stayed out of sync and the NEXT keystroke crashed (its regular insert
+       notification was mapped onto an externally mutated bridge tree ->
+       SIGSEGV).  assign() walks apply() -> raw_assign(), which announces to
+       every observer (the bridge auto-syncs and marks itself CORRUPTED, so
+       the caller must NOT call typeset_invalidate anymore), detaches old
+       subtree observers and records undo. */
+    tree fresh = result.result;
+    assign (subtree (et, parent_p), fresh);
+    /* If apply() postponed our modification (is_busy queue), the document
+       did not change yet — bail out cleanly; the next apply_changes round
+       will retry on the same plain-text paragraph. */
+    if (!strong_equal (subtree (et, parent_p), fresh)) {
+      MD_LOG ("inline: assign postponed by busy queue, skipping round\n");
+      return false;
+    }
     out_p = parent_p;
     /* Move the cursor to the END of the converted subtree's LAST LEAF.
        CRASH FIX (2026-08-17): end(et, parent_p) on CONCAT(strong("bold"))
@@ -189,8 +207,10 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
        its text — the same convention tree_traverse.cpp uses for text atoms
        (path_up(p) * N(label)).  The old tp pointed into the plain-text atom
        (e.g. (0).(0).(8) for "**bold**"); after the morph the paragraph is
-       CONCAT(strong("bold")) and the old path is out of bounds. */
-    path leaf = parent_p * (N (parent) - 1);
+       CONCAT(strong("bold")) and the old path is out of bounds.
+       NOTE: descend via N(fresh) (the tree we just assigned), not through
+       the stale `parent` reference, which raw_assign() may have refreshed. */
+    path leaf = parent_p * (N (fresh) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
     /* N(tree) is only valid for COMPOUND nodes (CHECK_COMPOUND asserts on
@@ -271,6 +291,15 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
     string rest = text (after, n);
     if (is_empty (rest)) return false;
 
+    /* DEFER (2026-08-26): if the text right after "# " starts with an inline
+       Markdown marker, the user is typing something like "# **bold**", not a
+       plain title.  Converting now would eat their first '*' into a plain
+       heading and create confusing intermediate states.  Let the inline pass
+       handle it first — once formatting appears, has_formatting() keeps this
+       pass away from the paragraph for good. */
+    if (rest[0] == '*' || rest[0] == '_' || rest[0] == '~' || rest[0] == '`')
+      return false;
+
     /* Map level -> TeXmacs tag (keep in sync with markdown_import.cpp). */
     string tag;
     switch (hashes) {
@@ -283,8 +312,19 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
     }
 
     /* Replace the paragraph in place with the heading (arity 1: text atom).
-       parent_p is preserved, so the outer path indices stay valid. */
-    para = compound (tag, tree (rest));
+       parent_p is preserved, so the outer path indices stay valid.
+       ROOT-CAUSE FIX (2026-08-26): use the official assign() primitive —
+       raw C++ reference assignment left the observer network (bridge, undo,
+       ip_observers) out of sync and the NEXT keystroke SIGSEGV'd.  The
+       bridge auto-syncs through the observer chain; do NOT typeset_invalidate
+       manually anymore. */
+    tree fresh = compound (tag, tree (rest));
+    assign (subtree (et, parent_p), fresh);
+    /* Bail out if apply() postponed us (is_busy queue) — retry next round. */
+    if (!strong_equal (subtree (et, parent_p), fresh)) {
+      MD_LOG ("heading: assign postponed by busy queue, skipping round\n");
+      return false;
+    }
     out_p = parent_p;
     /* Move the cursor to the END of the heading text atom.
        CRASH FIX (2026-08-18): end(et, parent_p) on a section/subsection
@@ -296,13 +336,14 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        Instead descend to the last atomic leaf and position past its text
        — the same convention tree_traverse.cpp uses for text atoms.
 
-       NOTE (2026-08-21): must use N(para), NOT N(parent_p) — parent_p is a
-       PATH (array<int>): N() on a path returns the PATH LENGTH (e.g. 2 for
-       "1.0"), not the arity of the heading node.  parent_p * (2-1) = 1.0.1
-       is OUT OF BOUNDS for section(rest) (arity 1, only child index 0),
-       and subtree(et, 1.0.1) crashed with SIGSEGV (confirmed in the 8/21
-       md_debug.log).  N(para) = 1, so leaf = parent_p * 0 = the text atom. */
-    path leaf = parent_p * (N (para) - 1);
+       NOTE (2026-08-21): must use the HEADING ARITY, NOT N(parent_p) —
+       parent_p is a PATH (array<int>): N() on a path returns the PATH LENGTH
+       (e.g. 2 for "1.0"), not the arity of the heading node.
+       parent_p * (2-1) = 1.0.1 is OUT OF BOUNDS for section(rest) (arity 1,
+       only child index 0), and subtree(et, 1.0.1) crashed with SIGSEGV
+       (confirmed in the 8/21 md_debug.log).  Arity is 1, so leaf = parent_p * 0
+       = the text atom.  (2026-08-26: reads N(fresh) — the tree we assigned.) */
+    path leaf = parent_p * (N (fresh) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
     out_tp = leaf * N (as_string (subtree (et, leaf)));

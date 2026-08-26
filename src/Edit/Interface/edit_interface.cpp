@@ -1016,25 +1016,20 @@ edit_interface_rep::apply_changes () {
 
   // B.4 Markdown inline conversion (runtime-switchable via preference)
   if (get_preference ("markdown input", "on") == "on") {
-    // Trigger on a wider set of edit events so that plain typing and pasting
-    // (which only set THE_CURSOR / THE_SELECTION, not THE_TREE) also run the
-    // markdown conversion passes. The markdown_input helpers already guard
-    // against non-concat / already-formatted trees, so running them here is
-    // safe and lossless.
-    if (env_change & (THE_TREE | THE_CURSOR | THE_SELECTION)) {
+    // Trigger on THE_TREE only (2026-08-26): the conversion passes mutate the
+    // document via assign(), so they must only run when the tree actually
+    // changed; pure cursor moves / selection updates gain nothing and only
+    // widen the race surface.
+    if (env_change & THE_TREE) {
       path md_p, md_tp;
       // B.4 inline pass: replace a complete markdown pattern (e.g. "**bold**")
-      // inside the cursor's CONCAT with the formatted tree.
+      // inside the cursor's CONCAT with the formatted tree.  The pass now
+      // modifies et through the official assign() primitive: all observers
+      // (typesetter bridge, undo, ip) are announced by the protocol itself,
+      // so NO manual typeset_invalidate() here — a hand-rolled bridge update
+      // desynchronizes the observer pairing and crashed on the next
+      // keystroke (root cause of the B.4 post-conversion SIGSEGV).
       if (apply_markdown_inline_conversion (et, tp, md_p, md_tp)) {
-        // Synchronize the typesetter bridge tree with the modified et subtree.
-        // typeset_invalidate (p) does ::notify_assign (ttt, p / rp,
-        // subtree (et, p)) -> bridge st is substituted in place (path already
-        // exists) and status = CORRUPTED, so the next typeset() re-renders the
-        // new structure. This is safe inside apply_changes(): unlike the D.1
-        // regression, the modified path already exists in the bridge tree
-        // (the user typed inside that very CONCAT), so no "new node path"
-        // substitution crash can occur.
-        typeset_invalidate (md_p);
         // Move the cursor to the end of the converted subtree: the old tp
         // pointed into the plain-text atom and is out of bounds now.
         tp= md_tp;
@@ -1045,7 +1040,6 @@ edit_interface_rep::apply_changes () {
       // alongside the inline pass.  tp is passed (not rp) so headings convert
       // in ANY paragraph, not only the first one of the DOCUMENT.
       if (apply_markdown_heading_conversion (et, tp, md_p, md_tp)) {
-        typeset_invalidate (md_p);
         tp= md_tp;
       }
     }
