@@ -15,388 +15,270 @@
 #include "string.hpp"
 #include "tree_helper.hpp"
 #include <moebius/tree_label.hpp>
+#include "utf8_utils.hpp"
 
 using namespace moebius;
 
-/******************************************************************************
- * Pattern matching helpers (no external regex dependency)
- ******************************************************************************/
+/* Result of local pattern matching */
+struct md_local_match {
+    int start_char;      /* UTF-8 character index where match starts */
+    int end_char;        /* UTF-8 character index where match ends (exclusive) */
+    string pattern_type; /* matched pattern type */
+    tree converted;      /* converted tree node */
+    bool valid;          /* whether a valid match was found */
+};
 
-/* Simple state machine for inline markdown parsing */
+/* Result of full string parsing (for completion checking) */
 struct md_parse_result {
     tree result;
     bool complete;  /* false if input is incomplete (e.g., "**bold" without closing **) */
 };
 
-/* Check if string starts with a specific marker */
+/* UTF-8 utilities */
+namespace utf8 {
+    inline int char_length (char c) {
+        if ((c & 0x80) == 0) return 1;
+        if ((c & 0xE0) == 0xC0) return 2;
+        if ((c & 0xF0) == 0xE0) return 3;
+        if ((c & 0xF8) == 0xF0) return 4;
+        return 1;
+    }
+    inline int next_char (string s, int pos) {
+        return pos + char_length (s[pos]);
+    }
+    inline string extract_char (string s, int pos) {
+        int len = char_length (s[pos]);
+        return s (pos, pos + len);
+    }
+}
+
+/* Check if string starts with a specific marker (UTF-8 safe) */
 static inline bool
-starts_with (string s, int pos, const char* prefix) {
-    int i = 0;
-    while (prefix[i] != '\0') {
-        if (pos + i >= N (s)) return false;
-        if (s[pos + i] != prefix[i]) return false;
-        i++;
+starts_with_utf8 (string s, int char_pos, const char* prefix) {
+    int byte_pos = 0;
+    for (int i = 0; i < char_pos; i++) {
+        if (byte_pos >= N (s)) return false;
+        byte_pos = utf8::next_char (s, byte_pos);
+    }
+    
+    int prefix_len = 0;
+    while (prefix[prefix_len] != '\0') prefix_len++;
+    
+    if (byte_pos + prefix_len > N (s)) return false;
+    for (int i = 0; i < prefix_len; i++) {
+        if (s[byte_pos + i] != prefix[i]) return false;
     }
     return true;
 }
 
-static inline bool
-is_alpha (char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
-/* Find closing marker, handling escapes */
+/* Find closing marker, handling escapes (UTF-8 safe) */
 static inline int
-find_closing_marker (string s, int start, const char* opener, const char* closer) {
-    int open_len = 0, close_len = 0;
-    while (opener[open_len]) open_len++;
-    while (closer[close_len]) close_len++;
+find_closing_marker_utf8 (string s, int start_char, const char* opener, const char* closer) {
+    int opener_len = 0, closer_len = 0;
+    while (opener[opener_len]) opener_len++;
+    while (closer[closer_len]) closer_len++;
     
-    int pos = start + open_len;
+    int char_pos = start_char + opener_len;
     int escape_count = 0;
     
-    while (pos <= N (s) - close_len) {
+    while (true) {
+        if (char_pos >= utf8::utf8_char_count (s)) return -1;
+        
+        int byte_pos = 0;
+        for (int i = 0; i < char_pos; i++) {
+            byte_pos = utf8::next_char (s, byte_pos);
+        }
+        
         /* Handle escape sequences */
-        if (s[pos] == '\\') {
-            pos += close_len;
+        if (s[byte_pos] == '\\') {
+            char_pos += closer_len;
             continue;
         }
         
-        if (starts_with (s, pos, closer) && escape_count == 0) {
-            return pos;
+        if (starts_with_utf8 (s, char_pos, closer) && escape_count == 0) {
+            return char_pos;
         }
         
-        pos++;
+        char_pos++;
     }
-    
-    return -1;  /* Not found */
 }
 
-/* Extract content between markers, stripping escapes */
+/* Extract content between markers, stripping escapes (UTF-8 safe) */
 static string
-unescape_markers (string s) {
+unescape_markers_utf8 (string s, int start_char, int end_char) {
     string result;
-    int n = N (s);
-    int i = 0;
-    while (i < n) {
-        if (s[i] == '\\' && i + 1 < n) {
-            result << s[i + 1];
-            i += 2;
+    int char_pos = start_char;
+    while (char_pos < end_char) {
+        int byte_pos = 0;
+        for (int i = 0; i < char_pos; i++) {
+            byte_pos = utf8::next_char (s, byte_pos);
+        }
+        
+        if (s[byte_pos] == '\\' && char_pos + 1 < end_char) {
+            /* Skip escape and take next character */
+            int next_byte = utf8::next_char (s, byte_pos);
+            result << s (byte_pos + 1, next_byte);
+            char_pos += 2;
         } else {
-            result << s[i];
-            i++;
+            int next_byte = utf8::next_char (s, byte_pos);
+            result << s (byte_pos, next_byte);
+            char_pos++;
         }
     }
     return result;
 }
 
-/******************************************************************************
- * Pattern handlers
- ******************************************************************************/
-
-/* Parse **text** → strong node.
-   NOTE: do NOT use `tree ("strong", 1)`: the lolly_tree constructor
-   `lolly_tree (lolly_tree<T> t, int n)` is selected (implicit conversion
-   of the const char* to a STRING atom first), so the resulting node gets
-   op = STRING (0) and is_atomic() returns true — the node is treated as
-   plain text and has_formatting() never sees it.  Use compound() instead
-   (same as markdown_import.cpp). */
+/* Pattern handlers (unchanged from original, but now receive byte indices) */
 static tree
-parse_strong (string s, int start, int end) {
-    string content = unescape_markers (s (start + 2, end - 2));
+parse_strong (string s, int start_byte, int end_byte) {
+    string content = unescape_markers_utf8 (s, 
+        utf8::utf8_char_count (s (0, start_byte)) + 2, 
+        utf8::utf8_char_count (s (0, end_byte)) - 2);
     if (is_empty (content)) return tree ("");
     return compound ("strong", tree (content));
 }
 
-/* Parse *text* → em node */
 static tree
-parse_emphasis (string s, int start, int end) {
-    string content = unescape_markers (s (start + 1, end - 1));
+parse_emphasis (string s, int start_byte, int end_byte) {
+    string content = unescape_markers_utf8 (s, 
+        utf8::utf8_char_count (s (0, start_byte)) + 1, 
+        utf8::utf8_char_count (s (0, end_byte)) - 1);
     if (is_empty (content)) return tree ("");
     return compound ("em", tree (content));
 }
 
-/* Parse code (backtick) -> code/verbatim node */
 static tree
-parse_inline_code (string s, int start, int end) {
-    string content = s (start + 1, end - 1);
-    /* No unescaping for code blocks - literal content */
+parse_inline_code (string s, int start_byte, int end_byte) {
+    string content = s (start_byte + 1, end_byte - 1);
     return compound ("code", tree (content));
 }
 
-/* Parse [text](url) → hlink node */
 static tree
-parse_link (string s, int start, int end) {
+parse_link (string s, int start_byte, int end_byte) {
     /* Find the ]( separator */
-    int bracket_pos = -1;
-    for (int i = start; i < end; i++) {
-        if (s[i] == ']' && i + 1 < end && s[i + 1] == '(') {
-            bracket_pos = i;
+    int bracket_pos_byte = -1;
+    int search_pos = start_byte;
+    while (search_pos < end_byte) {
+        if (s[search_pos] == ']' && search_pos + 1 < end_byte && s[search_pos + 1] == '(') {
+            bracket_pos_byte = search_pos;
             break;
         }
+        search_pos++;
     }
     
-    if (bracket_pos == -1) return tree (s (start, end));
+    if (bracket_pos_byte == -1) return tree (s (start_byte, end_byte));
     
     /* Extract text content */
-    string text = s (start + 1, bracket_pos);
+    int text_start = start_byte + 1;
+    int text_end = bracket_pos_byte;
     
-    /* Extract URL (everything between ( and )) */
-    int url_start = bracket_pos + 2;
-    int url_end = end - 1;
-    string url = s (url_start, url_end);
+    /* Extract URL */
+    int url_start = bracket_pos_byte + 2;
+    int url_end = end_byte - 1;
     
-    if (is_empty (text) || is_empty (url)) {
-        return tree (s (start, end));
+    if (text_start >= text_end || url_start >= url_end) {
+        return tree (s (start_byte, end_byte));
     }
     
-    tree link_node = compound ("hlink", tree (text), tree (url));
+    tree link_node = compound ("hlink", s (text_start, text_end), s (url_start, url_end));
     return link_node;
 }
 
-/* Parse ~~text~~ → strikeout node */
 static tree
-parse_strikeout (string s, int start, int end) {
-    string content = unescape_markers (s (start + 2, end - 2));
+parse_strikeout (string s, int start_byte, int end_byte) {
+    string content = unescape_markers_utf8 (s, 
+        utf8::utf8_char_count (s (0, start_byte)) + 2, 
+        utf8::utf8_char_count (s (0, end_byte)) - 2);
     if (is_empty (content)) return tree ("");
     return compound ("strikeout", tree (content));
 }
 
-/* Parse ![](url) → image node */
 static tree
-parse_image (string s, int start, int end) {
+parse_image (string s, int start_byte, int end_byte) {
     /* Format: ![alt](url) */
-    if (start + 2 >= end) return tree (s (start, end));
+    if (start_byte + 2 >= end_byte) return tree (s (start_byte, end_byte));
     
     /* Find the ]( separator */
-    int bracket_pos = -1;
-    for (int i = start + 2; i < end; i++) {
-        if (s[i] == ']' && i + 1 < end && s[i + 1] == '(') {
-            bracket_pos = i;
+    int bracket_pos_byte = -1;
+    int search_pos = start_byte + 2;
+    while (search_pos < end_byte) {
+        if (s[search_pos] == ']' && search_pos + 1 < end_byte && s[search_pos + 1] == '(') {
+            bracket_pos_byte = search_pos;
             break;
         }
+        search_pos++;
     }
     
-    if (bracket_pos == -1) return tree (s (start, end));
+    if (bracket_pos_byte == -1) return tree (s (start_byte, end_byte));
     
     /* Extract alt text */
-    string alt = s (start + 2, bracket_pos);
+    int alt_start = start_byte + 2;
+    int alt_end = bracket_pos_byte;
     
     /* Extract URL */
-    int url_start = bracket_pos + 2;
-    int url_end = end - 1;
-    string src = s (url_start, url_end);
+    int url_start = bracket_pos_byte + 2;
+    int url_end = end_byte - 1;
     
-    if (is_empty (src)) {
-        return tree (s (start, end));
+    if (url_start >= url_end) {
+        return tree (s (start_byte, end_byte));
     }
     
-    tree image_node = compound ("image", tree (""), tree (src), tree (alt));
+    tree image_node = compound ("image", tree (""), s (url_start, url_end), s (alt_start, alt_end));
     return image_node;
 }
 
-/******************************************************************************
- * Main parser: incrementally parse markdown from partial input
- ******************************************************************************/
-
-/*
- * Parse inline markdown patterns from potentially incomplete input.
- * Returns parsed tree structure, or original text if no patterns detected.
- * 
- * Key design decision: If input is incomplete (e.g., "**bold" without closing),
- * treat it as plain text to avoid jarring UX changes mid-typing.
- */
-static md_parse_result
-try_parse_inline_markdown (string s) {
-    md_parse_result result;
-    result.result = tree (CONCAT);
-    result.complete = true;
-    
-    if (is_empty (s)) {
-        return result;
-    }
-    
-    int pos = 0;
-    int n = N (s);
-    
-    while (pos < n) {
-        int match_start = -1;
-        int match_end = -1;
-        string pattern_type;
-        
-        /* Try each pattern at current position */
-        
-        /* 1. Strong: **...** */
-        if (starts_with (s, pos, "**")) {
-            int end = find_closing_marker (s, pos, "**", "**");
-            if (end != -1 && end > pos + 2) {
-                match_start = pos;
-                match_end = end + 2;
-                pattern_type = "strong";
-            }
-        }
-        
-        /* 2. Emphasis: *...* (but not inside words, and not **) */
-        if (is_empty (pattern_type) && s[pos] == '*' && !starts_with (s, pos, "**")) {
-            /* Check it's not part of a word boundary issue */
-            bool valid_start = (pos == 0 || (!is_alpha (s[pos - 1]) && s[pos - 1] != '_'));
-            if (valid_start) {
-                int end = find_closing_marker (s, pos, "*", "*");
-                if (end != -1 && end > pos + 1) {
-                    match_start = pos;
-                    match_end = end + 1;
-                    pattern_type = "emphasis";
-                }
-            }
-        }
-        
-        /* 3. Inline code: backtick-delimited */
-        if (is_empty (pattern_type) && s[pos] == '`') {
-            int end = find_closing_marker (s, pos, "`", "`");
-            if (end != -1 && end > pos + 1) {
-                match_start = pos;
-                match_end = end + 1;
-                pattern_type = "code";
-            }
-        }
-        
-        /* 4. Image: ![alt](url) */
-        if (is_empty (pattern_type) && starts_with (s, pos, "![")) {
-            int paren_pos = -1;
-            for (int i = pos + 2; i < n; i++) {
-                if (s[i] == ']' && i + 1 < n && s[i + 1] == '(') {
-                    paren_pos = i;
-                    break;
-                }
-            }
-            if (paren_pos != -1) {
-                int close_paren = -1;
-                for (int i = paren_pos + 2; i < n; i++) {
-                    if (s[i] == ')') {
-                        close_paren = i;
-                        break;
-                    }
-                }
-                if (close_paren != -1) {
-                    match_start = pos;
-                    match_end = close_paren + 1;
-                    pattern_type = "image";
-                }
-            }
-        }
-        
-        /* 5. Link: [text](url) - only if not preceded by ! */
-        if (is_empty (pattern_type) && s[pos] == '[' && !(pos > 0 && s[pos - 1] == '!')) {
-            int paren_pos = -1;
-            for (int i = pos + 1; i < n; i++) {
-                if (s[i] == ']' && i + 1 < n && s[i + 1] == '(') {
-                    paren_pos = i;
-                    break;
-                }
-            }
-            if (paren_pos != -1) {
-                int close_paren = -1;
-                for (int i = paren_pos + 2; i < n; i++) {
-                    if (s[i] == ')') {
-                        close_paren = i;
-                        break;
-                    }
-                }
-                if (close_paren != -1) {
-                    match_start = pos;
-                    match_end = close_paren + 1;
-                    pattern_type = "link";
-                }
-            }
-        }
-        
-        /* 6. Strikeout: ~~...~~ */
-        if (is_empty (pattern_type) && starts_with (s, pos, "~~")) {
-            int end = find_closing_marker (s, pos, "~~", "~~");
-            if (end != -1 && end > pos + 2) {
-                match_start = pos;
-                match_end = end + 2;
-                pattern_type = "strikeout";
-            }
-        }
-        
-        if (!is_empty (pattern_type) && match_start != -1 && match_end != -1) {
-            /* Complete match found - convert to tree */
-            tree converted;
-            
-            if (pattern_type == "strong")
-                converted = parse_strong (s, match_start, match_end);
-            else if (pattern_type == "emphasis")
-                converted = parse_emphasis (s, match_start, match_end);
-            else if (pattern_type == "code")
-                converted = parse_inline_code (s, match_start, match_end);
-            else if (pattern_type == "link")
-                converted = parse_link (s, match_start, match_end);
-            else if (pattern_type == "image")
-                converted = parse_image (s, match_start, match_end);
-            else if (pattern_type == "strikeout")
-                converted = parse_strikeout (s, match_start, match_end);
-            
-            if (!is_atomic (converted) || !is_empty (copy (as_string (L (converted))))) {
-                result.result << converted;
-            }
-            
-            pos = match_end;
-        } else {
-            /* No pattern match at this position - copy character as-is */
-            result.result << tree (s[pos]);
-            pos++;
-        }
-    }
-    
-    return result;
-}
-
-/* Check if all Markdown markers are properly paired.
- *
- * Returns true only if every opening marker has a matching closer,
- * respecting escape sequences and counting only non-escaped markers.
- *
- * Detects: **, *, ~~, backtick, [](), ![]()  (but NOT the text content between them).
- * This is a simple stack-free validator that's still much more accurate
- * than character counting.  It does NOT detect nested mis-pairing
- * (e.g. **bold*italic**), which is fine because such nested cases are
- * semantically ambiguous and the parse step handles them correctly anyway.
- */
+/* Check if all Markdown markers are properly paired (UTF-8 safe) */
 static inline bool
-is_complete_markdown_input (string s) {
-    int n = N (s);
-
+is_complete_markdown_input_utf8 (string s) {
+    int n_char = utf8::utf8_char_count (s);
+    
     /* --- Strong: **...** --- */
-    /* Scan for unclosed ** */
     {
         int depth = 0;
-        int i = 0;
-        while (i < n) {
-            if (s[i] == '\\') { i += 2; continue; }
-            if (i + 1 < n && s[i] == '*' && s[i+1] == '*') {
-                depth = 1 - depth;  /* toggle on each complete ** */
-                i += 2;
+        int char_pos = 0;
+        while (char_pos < n_char) {
+            int byte_pos = 0;
+            for (int i = 0; i < char_pos; i++) {
+                byte_pos = utf8::next_char (s, byte_pos);
+            }
+            if (s[byte_pos] == '\\') { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (char_pos + 1 < n_char && 
+                starts_with_utf8 (s, char_pos, "**")) {
+                depth = 1 - depth;
+                char_pos += 2;
             } else {
-                i++;
+                char_pos++;
             }
         }
         if (depth != 0) return false;
     }
 
     /* --- Emphasis: *...* (single) --- */
-    /* Count only non-** single *, toggling on each isolated asterisk */
     {
         int depth = 0;
-        int i = 0;
-        while (i < n) {
-            if (s[i] == '\\') { i += 2; continue; }
-            if (i + 1 < n && s[i] == '*' && s[i+1] == '*') { i += 2; continue; }
-            if (s[i] == '*') {
+        int char_pos = 0;
+        while (char_pos < n_char) {
+            int byte_pos = 0;
+            for (int i = 0; i < char_pos; i++) {
+                byte_pos = utf8::next_char (s, byte_pos);
+            }
+            if (s[byte_pos] == '\\') { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (char_pos + 1 < n_char && 
+                starts_with_utf8 (s, char_pos, "**")) { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (starts_with_utf8 (s, char_pos, "*")) {
                 depth = 1 - depth;
-                i++;
+                char_pos++;
             } else {
-                i++;
+                char_pos++;
             }
         }
         if (depth != 0) return false;
@@ -405,35 +287,51 @@ is_complete_markdown_input (string s) {
     /* --- Strikeout: ~~...~~ --- */
     {
         int depth = 0;
-        int i = 0;
-        while (i < n) {
-            if (s[i] == '\\') { i += 2; continue; }
-            if (i + 1 < n && s[i] == '~' && s[i+1] == '~') {
+        int char_pos = 0;
+        while (char_pos < n_char) {
+            int byte_pos = 0;
+            for (int i = 0; i < char_pos; i++) {
+                byte_pos = utf8::next_char (s, byte_pos);
+            }
+            if (s[byte_pos] == '\\') { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (char_pos + 1 < n_char && 
+                starts_with_utf8 (s, char_pos, "~~")) {
                 depth = 1 - depth;
-                i += 2;
+                char_pos += 2;
             } else {
-                i++;
+                char_pos++;
             }
         }
         if (depth != 0) return false;
     }
 
     /* --- Inline code: backtick-based --- */
-    /* Backticks must be even-count. Multi-backtick fences not handled
-       here since markdown_input only triggers on single-line CONCAT content. */
     {
         int depth = 0;
-        int i = 0;
-        while (i < n) {
-            if (s[i] == '\\') { i += 2; continue; }
-            if (s[i] == '`' && (i + 1 >= n || s[i+1] != '`')) {
+        int char_pos = 0;
+        while (char_pos < n_char) {
+            int byte_pos = 0;
+            for (int i = 0; i < char_pos; i++) {
+                byte_pos = utf8::next_char (s, byte_pos);
+            }
+            if (s[byte_pos] == '\\') { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (char_pos + 1 < n_char && 
+                s[byte_pos] == '`' && 
+                !(char_pos + 1 < n_char && s[byte_pos + 1] == '`')) {
                 depth = 1 - depth;
-                i++;
-            } else if (s[i] == '`' && i + 1 < n && s[i+1] == '`') {
+                char_pos++;
+            } else if (char_pos + 1 < n_char && 
+                     s[byte_pos] == '`' && s[byte_pos + 1] == '`') {
                 /* double backtick → skip both, no toggle */
-                i += 2;
+                char_pos += 2;
             } else {
-                i++;
+                char_pos++;
             }
         }
         if (depth != 0) return false;
@@ -442,45 +340,274 @@ is_complete_markdown_input (string s) {
     /* --- Link: [...] and image: ![alt]... must have matching [ and ] --- */
     {
         int depth = 0;
-        int i = 0;
-        while (i < n) {
-            if (s[i] == '\\') { i += 2; continue; }
-            if (i + 1 < n && s[i] == '!' && s[i+1] == '[') {
+        int char_pos = 0;
+        while (char_pos < n_char) {
+            int byte_pos = 0;
+            for (int i = 0; i < char_pos; i++) {
+                byte_pos = utf8::next_char (s, byte_pos);
+            }
+            if (s[byte_pos] == '\\') { 
+                char_pos += 2; 
+                continue; 
+            }
+            if (char_pos + 1 < n_char && 
+                s[byte_pos] == '!' && s[byte_pos + 1] == '[') {
                 depth++;
-                i += 2;
-            } else if (s[i] == '[') {
+                char_pos += 2;
+            } else if (starts_with_utf8 (s, char_pos, "[")) {
                 depth++;
-                i++;
-            } else if (s[i] == ']') {
+                char_pos++;
+            } else if (starts_with_utf8 (s, char_pos, "]")) {
                 depth--;
-                if (depth < 0) return false;  /* unmatched ] */
-                /* Check for following (…) — if missing, the link is incomplete */
-                i++;
-                if (i + 1 < n && s[i] == '(') {
-                    /* find closing ) */
-                    int j = i + 1;
-                    int paren_depth = 1;
-                    while (j < n && paren_depth > 0) {
-                        if (s[j] == '\\') { j += 2; continue; }
-                        if (s[j] == '(') paren_depth++;
-                        if (s[j] == ')') paren_depth--;
-                        if (paren_depth > 0) j++;
+                if (depth < 0) return false;
+                char_pos++;
+                
+                /* Check for following (…) */
+                if (char_pos < n_char) {
+                    int byte_pos2 = 0;
+                    for (int i = 0; i < char_pos; i++) {
+                        byte_pos2 = utf8::next_char (s, byte_pos2);
                     }
-                    if (paren_depth != 0) return false;  /* unclosed (...) */
-                    i = j;  /* skip past ) */
+                    if (s[byte_pos2] == '(') {
+                        /* find closing ) */
+                        int j = char_pos + 1;
+                        int paren_depth = 1;
+                        while (j < n_char && paren_depth > 0) {
+                            int byte_pos3 = 0;
+                            for (int k = 0; k < j; k++) {
+                                byte_pos3 = utf8::next_char (s, byte_pos3);
+                            }
+                            if (s[byte_pos3] == '\\') { 
+                                j += 2; 
+                                continue; 
+                            }
+                            if (s[byte_pos3] == '(') paren_depth++;
+                            if (s[byte_pos3] == ')') paren_depth--;
+                            if (paren_depth > 0) j++;
+                        }
+                        if (paren_depth != 0) return false;
+                        char_pos = j;
+                    } else {
+                        return false;
+                    }
                 } else {
-                    /* No ( after ] — could be reference-style link;
-                     * for B.4 we only support [text](url), so flag incomplete. */
                     return false;
                 }
             } else {
-                i++;
+                char_pos++;
             }
         }
         if (depth != 0) return false;
     }
 
     return true;
+}
+
+/* Main parser: find first complete inline markdown pattern in UTF-8 string */
+static md_local_match
+try_parse_inline_markdown_utf8 (string s) {
+    md_local_match result;
+    result.valid = false;
+    
+    if (is_empty (s)) {
+        return result;
+    }
+    
+    int n_char = utf8::utf8_char_count (s);
+    int char_pos = 0;
+    
+    while (char_pos < n_char) {
+        int match_start_char = -1;
+        int match_end_char = -1;
+        string pattern_type;
+        
+        /* Get byte position for current char */
+        int byte_pos = 0;
+        for (int i = 0; i < char_pos; i++) {
+            byte_pos = utf8::next_char (s, byte_pos);
+        }
+        
+        /* Try each pattern at current position */
+        
+        /* 1. Strong: **...** */
+        if (char_pos + 1 < n_char && 
+            starts_with_utf8 (s, char_pos, "**")) {
+            int end_char = find_closing_marker_utf8 (s, char_pos, "**", "**");
+            if (end_char != -1 && end_char > char_pos + 2) {
+                match_start_char = char_pos;
+                match_end_char = end_char + 2;
+                pattern_type = "strong";
+            }
+        }
+        
+        /* 2. Emphasis: *...* (but not inside words, and not **) */
+        if (pattern_type.empty() && s[byte_pos] == '*' && 
+            !(char_pos + 1 < n_char && starts_with_utf8 (s, char_pos, "**"))) {
+            /* Check word boundary */
+            bool valid_start = (char_pos == 0 || 
+                (!is_alpha (s[byte_pos - 1]) && s[byte_pos - 1] != '_'));
+            if (valid_start) {
+                int end_char = find_closing_marker_utf8 (s, char_pos, "*", "*");
+                if (end_char != -1 && end_char > char_pos + 1) {
+                    match_start_char = char_pos;
+                    match_end_char = end_char + 1;
+                    pattern_type = "emphasis";
+                }
+            }
+        }
+        
+        /* 3. Inline code: backtick-delimited */
+        if (pattern_type.empty() && s[byte_pos] == '`') {
+            int end_char = find_closing_marker_utf8 (s, char_pos, "`", "`");
+            if (end_char != -1 && end_char > char_pos + 1) {
+                match_start_char = char_pos;
+                match_end_char = end_char + 1;
+                pattern_type = "code";
+            }
+        }
+        
+        /* 4. Image: ![alt](url) */
+        if (pattern_type.empty() && 
+            char_pos + 1 < n_char && 
+            starts_with_utf8 (s, char_pos, "![[")) {
+            /* Actually: ![, need to find ] then ( */
+            int bracket_char = -1;
+            int search_pos = char_pos + 2;
+            while (search_pos < n_char) {
+                int byte_pos2 = 0;
+                for (int i = 0; i < search_pos; i++) {
+                    byte_pos2 = utf8::next_char (s, byte_pos2);
+                }
+                if (s[byte_pos2] == ']' && search_pos + 1 < n_char && 
+                    s[byte_pos2 + 1] == '(') {
+                    bracket_char = search_pos;
+                    break;
+                }
+                search_pos++;
+            }
+            if (bracket_char != -1) {
+                int close_paren = -1;
+                int search_pos2 = bracket_char + 2;
+                while (search_pos2 < n_char) {
+                    int byte_pos3 = 0;
+                    for (int i = 0; i < search_pos2; i++) {
+                        byte_pos3 = utf8::next_char (s, byte_pos3);
+                    }
+                    if (s[byte_pos3] == ')') {
+                        close_paren = search_pos2;
+                        break;
+                    }
+                    search_pos2++;
+                }
+                if (close_paren != -1) {
+                    match_start_char = char_pos;
+                    match_end_char = close_paren + 1;
+                    pattern_type = "image";
+                }
+            }
+        }
+        
+        /* 5. Link: [text](url) - only if not preceded by ! */
+        if (pattern_type.empty() && s[byte_pos] == '[' && 
+            !(char_pos > 0 && 
+              /* Check if preceded by ! */ 
+              [&]{
+                  int byte_pos2 = 0;
+                  for (int i = 0; i < char_pos - 1; i++) {
+                      byte_pos2 = utf8::next_char (s, byte_pos2);
+                  }
+                  return char_pos > 0 && s[byte_pos2] == '!';
+              }())) {
+            int bracket_char = -1;
+            int search_pos = char_pos + 1;
+            while (search_pos < n_char) {
+                int byte_pos2 = 0;
+                for (int i = 0; i < search_pos; i++) {
+                    byte_pos2 = utf8::next_char (s, byte_pos2);
+                }
+                if (s[byte_pos2] == ']' && search_pos + 1 < n_char && 
+                    s[byte_pos2 + 1] == '(') {
+                    bracket_char = search_pos;
+                    break;
+                }
+                search_pos++;
+            }
+            if (bracket_char != -1) {
+                int close_paren = -1;
+                int search_pos2 = bracket_char + 2;
+                while (search_pos2 < n_char) {
+                    int byte_pos3 = 0;
+                    for (int i = 0; i < search_pos2; i++) {
+                        byte_pos3 = utf8::next_char (s, byte_pos3);
+                    }
+                    if (s[byte_pos3] == ')') {
+                        close_paren = search_pos2;
+                        break;
+                    }
+                    search_pos2++;
+                }
+                if (close_paren != -1) {
+                    match_start_char = char_pos;
+                    match_end_char = close_paren + 1;
+                    pattern_type = "link";
+                }
+            }
+        }
+        
+        /* 6. Strikeout: ~~...~~ */
+        if (pattern_type.empty() && 
+            char_pos + 1 < n_char && 
+            starts_with_utf8 (s, char_pos, "~~")) {
+            int end_char = find_closing_marker_utf8 (s, char_pos, "~~", "~~");
+            if (end_char != -1 && end_char > char_pos + 2) {
+                match_start_char = char_pos;
+                match_end_char = end_char + 2;
+                pattern_type = "strikeout";
+            }
+        }
+        
+        if (!pattern_type.empty() && match_start_char != -1 && match_end_char != -1) {
+            /* Convert byte positions */
+            int start_byte = 0;
+            int end_byte = 0;
+            for (int i = 0; i < match_start_char; i++) {
+                start_byte = utf8::next_char (s, start_byte);
+            }
+            for (int i = 0; i < match_end_char; i++) {
+                end_byte = utf8::next_char (s, end_byte);
+            }
+            
+            tree converted;
+            if (pattern_type == "strong")
+                converted = parse_strong (s, start_byte, end_byte);
+            else if (pattern_type == "emphasis")
+                converted = parse_emphasis (s, start_byte, end_byte);
+            else if (pattern_type == "code")
+                converted = parse_inline_code (s, start_byte, end_byte);
+            else if (pattern_type == "link")
+                converted = parse_link (s, start_byte, end_byte);
+            else if (pattern_type == "image")
+                converted = parse_image (s, start_byte, end_byte);
+            else if (pattern_type == "strikeout")
+                converted = parse_strikeout (s, start_byte, end_byte);
+            
+            if (!is_atomic (converted) || !is_empty (copy (as_string (L (converted))))) {
+                result.start_char = match_start_char;
+                result.end_char = match_end_char;
+                result.pattern_type = pattern_type;
+                result.converted = converted;
+                result.valid = true;
+                return result;
+            }
+            
+            /* Skip past this match */
+            char_pos = match_end_char;
+        } else {
+            char_pos++;
+        }
+    }
+    
+    return result;
 }
 
 #endif /* defined MARKDOWN_INLINE_PATTERNS_H */

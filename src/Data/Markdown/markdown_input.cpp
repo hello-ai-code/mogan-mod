@@ -1,12 +1,4 @@
-/******************************************************************************
- * MODULE     : markdown_input.cpp
- * DESCRIPTION: Markdown transparent input integration for Mogan editor
- * COPYRIGHT  : (C) 2026  Mogan contributors
- *******************************************************************************
- * This software falls under the GNU general public license version 3 or later.
- * It comes WITHOUT ANY WARRANTY WHATSOEVER. For details, see the file LICENSE
- * in the root directory or <http://www.gnu.org/licenses/gpl-3.0.html>.
- ******************************************************************************/
+//markdown_input.cpp新版本：局部转换实现
 
 #include "markdown_inline_patterns.hpp"
 #include "path.hpp"
@@ -32,19 +24,12 @@ using namespace moebius;
 #define MD_S(s) as_charp (s)
 
 /******************************************************************************
- * Check if a tree has any structural formatting
- *
- * Returns true only if the tree (or any of its non-atomic descendants)
- * has at least one compound node (e.g., strong, em, code, hlink).
+ * 检查是否包含任何格式化标记的辅助函数
  ******************************************************************************/
 static bool
 has_formatting (tree t) {
     if (is_atomic (t)) return false;
     if (N (t) == 0) return false;
-    /* Compound-label test must use is_func (t, CONCAT), NOT `t == "CONCAT"`:
-       the lolly operator== (tree, const char*) only matches ATOMIC nodes
-       (t->op == STRING), so it is always false for a compound CONCAT, and
-       the DRD label string is lowercase "concat" anyway. */
     if (!is_func (t, CONCAT)) return true;
     for (int i = 0; i < N (t); i++) {
         if (has_formatting (t[i])) return true;
@@ -53,7 +38,7 @@ has_formatting (tree t) {
 }
 
 /******************************************************************************
- * Recursively collect all text from a tree
+ * 递归收集树中所有文本的辅助函数
  ******************************************************************************/
 static void
 collect_text (tree t, string& out) {
@@ -67,81 +52,71 @@ collect_text (tree t, string& out) {
 }
 
 /******************************************************************************
- * Locate the paragraph container of the cursor path.
- *
- * Mogan stores paragraphs in TWO shapes (confirmed by [MD] debug logs):
- *   1. DOCUMENT -> CONCAT -> atomic(...)     multi-atom paragraph (TeXmacs
- *      style), or
- *   2. DOCUMENT -> atomic(...)               SINGLE-ATOM paragraph WITHOUT a
- *      CONCAT wrapper!  This is the common case while typing plain text:
- *      the debug log shows "walk: p=1.0 label=<atomic>" followed directly
- *      by "walk: p=1 label=document" — there is NO concat level at all.
- *
- * WARNING — parent_subtree (et, tp) is NOT usable here:
- *   tp is a FULL cursor path (e.g. (0).(0).(k): DOCUMENT[0] = CONCAT (or
- *   atomic), CONCAT[0] = text atom, k = char).  parent_subtree() strips only
- *   the LAST item (k), therefore it returns the text ATOM (CONCAT[0]), which
- *   is atomic -> apply_markdown_inline_conversion() silently bailed out on
- *   "is_atomic (parent)" and never converted anything.
- *
- *   We walk upwards from tp, one level at a time, until we hit a compound
- *   CONCAT container (the paragraph).  If we hit DOCUMENT before any CONCAT,
- *   the paragraph is DOCUMENT's direct ATOMIC child (shape 2) — we return
- *   that atomic node as the container.
+ * 找到光标所在的原子节点
+ * 
+ * Mogan存储文本的方式：
+ *   - 单个文字/原子直接存储在CONCAT中
+ *   - 持续输入会形成嵌套CONCAT(原子1, 原子2, ...)
+ * 光标路径(tp)指向光标所在的具体位置，我们需要找到包含光标的原子节点
  ******************************************************************************/
-static tree*
-search_concat_parent (tree& et, path tp, path& out_p) {
-    MD_LOG ("  walk: tp=%s\n", MD_S (as_string (tp)));
+static bool
+find_cursor_atomic (tree& et, path tp, path& atom_p) {
+    MD_LOG ("  find_cursor_atomic: tp=%s\n", MD_S (as_string (tp)));
     path p = tp;
-    path last_atom;   /* last atomic path seen while climbing (for shape 2) */
+    
+    // 如果tp已经是原子（光标在原子内部），直接返回
+    if (!is_nil (p) && has_subtree (et, p) && is_atomic (subtree (et, p))) {
+        atom_p = p;
+        MD_LOG ("  find_cursor_atomic: tp already on atomic node: %s\n", MD_S (as_string (p)));
+        return true;
+    }
+    
+    // 否则向上查找，直到找到原子节点
     while (!is_nil (p)) {
-        p = path_up (p);
+        path_up (p);
         if (is_nil (p) || !has_subtree (et, p)) {
-            MD_LOG ("  walk: stop at p=%s (nil or no subtree)\n",
-                    MD_S (as_string (p)));
             break;
         }
+        
         tree* node = &subtree (et, p);
         if (is_atomic (*node)) {
-            MD_LOG ("  walk: p=%s label=<atomic>\n", MD_S (as_string (p)));
-            last_atom = p;
-            continue;
+            atom_p = p;
+            MD_LOG ("  find_cursor_atomic: found atomic node at path: %s\n", MD_S (as_string (p)));
+            return true;
         }
-        MD_LOG ("  walk: p=%s label=%s\n", MD_S (as_string (p)),
-                MD_S (as_string (L (*node))));
-        if (is_func (*node, CONCAT)) {
-            out_p = p;
-            return node;
-        }
-        if (is_func (*node, DOCUMENT)) {
-            /* Shape 2: single-atom paragraph, no CONCAT wrapper.
-               The paragraph is the atomic child we passed through whose
-               parent is this DOCUMENT. */
-            if (!is_nil (last_atom) && path_up (last_atom) == p) {
-                MD_LOG ("  walk: single-atom paragraph at p=%s\n",
-                        MD_S (as_string (last_atom)));
-                out_p = last_atom;
-                return &subtree (et, last_atom);
+        
+        // 向下查找子节点
+        int n = N (*node);
+        for (int i = 0; i < n; i++) {
+            path child = p * i;
+            if (has_subtree (et, child) && has_subtree (et, child * N (subtree (et, child)))) {
+                // 检查子节点是否是原子且包含光标
+                path child_char = child * N (subtree (et, child));
+                if (has_subtree (et, child_char)) {
+                    // 递归检查子节点
+                    path child_atom;
+                    if (find_cursor_atomic (et, child_char, child_atom)) {
+                        atom_p = child_atom;
+                        MD_LOG ("  find_cursor_atomic: found atomic in child: %s\n", MD_S (as_string (child_atom)));
+                        return true;
+                    }
+                }
             }
-            break;
         }
-        /* Other compound (with/strong/em/...): keep climbing */
     }
-    out_p = path ();
-    return NULL;
+    
+    MD_LOG ("  find_cursor_atomic: no atomic node found for tp=%s\n", MD_S (as_string (tp)));
+    return false;
 }
 
 /******************************************************************************
- * Core entry point: apply the Markdown inline patterns at the cursor.
- *
- * Called from edit_interface_rep::apply_changes() on pure tree changes
- * (typing).  We examine the paragraph container of the cursor position
- * (a CONCAT for multi-atom paragraphs, or a bare ATOMIC for single-atom
- * paragraphs — both shapes occur in Mogan); if it is plain text forming a
- * complete inline Markdown pattern, we replace the container's content
- * with the parsed TeXmacs formatting tree.
- *
- * Returns true if a conversion was performed (caller re-typesets).
+ * 应用Markdown内联转换（局部转换）
+ * 
+ * 与之前的版本不同，这个版本不会替换整个段落，而是：
+ * 1. 找到光标所在的原子节点
+ * 2. 只在该原子节点的文本内查找Markdown模式
+ * 3. 用格式化树替换被匹配的模式，保留前后文本
+ * 4. 设置光标位置到格式化内容之后
  ******************************************************************************/
 bool
 apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
@@ -149,111 +124,115 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     MD_LOG ("inline: enter tp=%s\n", MD_S (as_string (tp)));
     if (is_nil (tp)) return false;
 
-    path parent_p;
-    tree* pp = search_concat_parent (et, tp, parent_p);
-    MD_LOG ("inline: search_concat_parent -> %s (pp=%p)\n",
-            parent_p == path () ? "NOT FOUND" : MD_S (as_string (parent_p)),
-            (void*) pp);
-    if (pp == NULL) return false;
-    tree& parent = *pp;
+    // 找到光标所在的原子节点
+    path atom_p;
+    if (!find_cursor_atomic (et, tp, atom_p)) return false;
+    
+    MD_LOG ("inline: found atomic node at path: %s\n", MD_S (as_string (atom_p)));
+    
+    tree& atomic_node = subtree (et, atom_p);
+    
+    // 原子节点必须是纯文本（否则无法转换Markdown）
+    if (has_formatting (atomic_node)) return false;
+    
+    // 获取原子节点的内容
+    string atomic_text = as_string (atomic_node);
+    MD_LOG ("inline: atomic_text=\"%s\" len=%d\n", MD_S (atomic_text), N (atomic_text));
+    
+    if (is_empty (atomic_text)) return false;
 
-    /* Only operate on a plain-text paragraph container (CONCAT or atomic).
-       Avoid flattening nodes that already carry structure. */
-    if (has_formatting (parent)) return false;
-
-    /* Collect all text from the container. */
-    string text;
-    collect_text (parent, text);
-    MD_LOG ("inline: text=\"%s\" len=%d\n", MD_S (text), N (text));
-    if (is_empty (text)) return false;
-
-    /* Incomplete input (e.g. "**bold" without closing) stays plain text. */
-    bool complete = is_complete_markdown_input (text);
-    MD_LOG ("inline: is_complete_markdown_input=%d\n", (int) complete);
+    // 检查是否包含完整的Markdown标记
+    bool complete = is_complete_markdown_input_utf8 (atomic_text);
+    MD_LOG ("inline: is_complete_markdown_input_utf8=%d\n", (int) complete);
     if (!complete) return false;
 
-    md_parse_result result = try_parse_inline_markdown (text);
-    bool fmt = has_formatting (result.result);
-    MD_LOG ("inline: parse produced formatting=%d\n", (int) fmt);
-    if (!fmt) return false;
+    // 使用UTF-8安全的解析器找到第一个完整的Markdown模式
+    md_local_match result = try_parse_inline_markdown_utf8 (atomic_text);
+    MD_LOG ("inline: parse result valid=%d start_char=%d end_char=%d type=%s\n", 
+            (int) result.valid, result.start_char, result.end_char, MD_S (result.pattern_type));
 
-    /* Replace the container content with the parsed structure (idempotent).
-       ROOT-CAUSE FIX (2026-08-26): NEVER assign through a raw C++ reference.
-       lolly's operator= only swaps the rep pointer — no observer announce/
-       notify/detach — so the typesetter bridge, undo stack and ip_observers
-       stayed out of sync and the NEXT keystroke crashed (its regular insert
-       notification was mapped onto an externally mutated bridge tree ->
-       SIGSEGV).  assign() walks apply() -> raw_assign(), which announces to
-       every observer (the bridge auto-syncs and marks itself CORRUPTED, so
-       the caller must NOT call typeset_invalidate anymore), detaches old
-       subtree observers and records undo. */
-    tree fresh = result.result;
-    assign (subtree (et, parent_p), fresh);
-    /* If apply() postponed our modification (is_busy queue), the document
-       did not change yet — bail out cleanly; the next apply_changes round
-       will retry on the same plain-text paragraph. */
-    if (!strong_equal (subtree (et, parent_p), fresh)) {
-      MD_LOG ("inline: assign postponed by busy queue, skipping round\n");
-      return false;
+    if (!result.valid) return false;
+
+    // 将UTF-8字符位置转换为字节位置
+    int start_byte = 0;
+    int end_byte = 0;
+    
+    for (int i = 0; i < result.start_char; i++) {
+        start_byte = utf8::next_char (atomic_text, start_byte);
     }
-    out_p = parent_p;
-    /* Move the cursor to the END of the converted subtree's LAST LEAF.
-       CRASH FIX (2026-08-17): end(et, parent_p) on CONCAT(strong("bold"))
-       returns the STRONG NODE ITSELF (parent_p.0), not the end of the text
-       inside it.  strong is an enforcing node: the cursor cannot rest on a
-       node, so the next keystroke used an out-of-bounds path and SIGSEGV'd
-       (same family as the empty nullary section() crash in the heading
-       pass).  Instead we descend to the last atomic leaf and position past
-       its text — the same convention tree_traverse.cpp uses for text atoms
-       (path_up(p) * N(label)).  The old tp pointed into the plain-text atom
-       (e.g. (0).(0).(8) for "**bold**"); after the morph the paragraph is
-       CONCAT(strong("bold")) and the old path is out of bounds.
-       NOTE: descend via N(fresh) (the tree we just assigned), not through
-       the stale `parent` reference, which raw_assign() may have refreshed. */
-    path leaf = parent_p * (N (fresh) - 1);
-    while (!is_atomic (subtree (et, leaf)))
-        leaf = leaf * (N (subtree (et, leaf)) - 1);
-    /* N(tree) is only valid for COMPOUND nodes (CHECK_COMPOUND asserts on
-       atoms) — use N(as_string(...)) on the atomic label, the same way
-       tree_traverse.cpp positions at the end of a text atom. */
-    out_tp = leaf * N (as_string (subtree (et, leaf)));
-    MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s\n",
-            MD_S (as_string (out_p)), MD_S (as_string (out_tp)));
+    for (int i = 0; i < result.end_char; i++) {
+        end_byte = utf8::next_char (atomic_text, end_byte);
+    }
+    
+    MD_LOG ("inline: byte positions: start=%d, end=%d, matched text=\"%s\"\n", 
+            start_byte, end_byte, MD_S (atomic_text (start_byte, end_byte)));
+
+    // 获取前后文本
+    string prefix = atomic_text (0, start_byte);
+    string match_text = atomic_text (start_byte, end_byte);
+    string suffix = atomic_text (end_byte, N (atomic_text));
+    
+    MD_LOG ("inline: prefix=\"%s\" suffix=\"%s\"\n", MD_S (prefix), MD_S (suffix));
+
+    // 构建新的原子节点：前文 + 格式化树 + 后文
+    tree new_atomic_node = tree (CONCAT);
+    
+    if (!is_empty (prefix)) {
+        new_atomic_node << tree (prefix);
+    }
+    
+    if (!is_atomic (result.converted) || !is_empty (copy (as_string (L (result.converted))))) {
+        new_atomic_node << result.converted;
+    }
+    
+    if (!is_empty (suffix)) {
+        new_atomic_node << tree (suffix);
+    }
+
+    // 使用assign替换原子节点（保持observer网络完整）
+    assign (atomic_node, new_atomic_node);
+    
+    MD_LOG ("inline: assigned new atomic node, original atomic: %s\n", MD_S (as_string (atomic_node)));
+
+    // 设置输出路径：光标位置在格式化内容之后
+    out_p = atom_p;
+    
+    // 找到格式化树在CONCAT中的位置（第一个兄弟节点后）
+    int format_index = (N (new_atomic_node) >= 3) ? 1 : 0;
+    
+    // 找到格式化节点的字节长度
+    tree& formatted = new_atomic_node[format_index];
+    int formatted_length = 0;
+    
+    if (!is_atomic (formatted)) {
+        for (int i = 0; i < N (formatted); i++) {
+            formatted_length += N (as_string (formatted[i]));
+        }
+    } else {
+        formatted_length = N (as_string (formatted));
+    }
+    
+    // 设置光标到格式化内容之后
+    int total_prefix_chars = utf8::utf8_char_count (prefix);
+    int total_chars_to_move = total_prefix_chars + formatted_length;
+    
+    // 构建光标路径
+    path new_tp = atom_p;
+    if (total_chars_to_move > 0) {
+        new_tp = atom_p * total_chars_to_move;
+    }
+    
+    out_tp = new_tp;
+    MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s prefix_len=%d format_len=%d total_move=%d\n",
+            MD_S (as_string (out_p)), MD_S (as_string (out_tp)), total_prefix_chars, formatted_length, total_chars_to_move);
+    
     return true;
 }
 
 /******************************************************************************
- * B.4.1  Block-level heading: `# ` / `## ` / … / `###### ` at the start of
- *        a paragraph is transformed into a TeXmacs section heading.
- *
- * DESIGN NOTE — why "in-place morph" instead of a structural replace:
- *   Mogan stores paragraphs as DOCUMENT children WITHOUT a <paragraph> wrapper:
- *       DOCUMENT -> CONCAT("…text…")   (one CONCAT per paragraph)
- *   We locate the paragraph that CONTAINS the cursor with
- *   search_concat_parent (same routine as the inline pass), then REPLACE that
- *   paragraph node in place with the heading compound.  Because the paragraph
- *   keeps its path (parent_p), the DOCUMENT child index does not shift and the
- *   outer part of tp stays valid — this is what transparent input needs.
- *   The exported .md still round-trips correctly via markdown_export (it
- *   iterates DOCUMENT children and looks at each child's tag).
- *
- * FIX (2026-08-17): the previous implementation hard-coded `doc[0]`, so a
- *   heading typed in any paragraph OTHER than the first never converted.
- *   Now we operate on the cursor's own paragraph.
- *
- * CRASH FIX (2026-08-17): an EMPTY heading ("# " with nothing after the
- *   space) is NOT converted.  An empty section() is a nullary compound node:
- *   end()/correct_cursor() cannot produce a valid cursor inside it (the
- *   "arity (parent_subtree (t, p)) == 0" shortcut returns p itself, which is
- *   not a legal cursor on a nullary node), so the next keystroke used a
- *   stale/out-of-bounds path and SIGSEGV'd.  We wait until the user typed
- *   the actual title text, then convert — the heading always has arity 1.
- *
- * TRIGGER: only when the cursor's paragraph is plain text that already starts
- *   with N hashes followed by a space AND has at least one character after
- *   the space.  We strip the leading "#… " and set the label.
- *
- * IDEMPOTENT: no-op when the paragraph is already a section/subsection/etc.
+ * B.4.1  块级标题：# / ## / ... / ###### at the start of a paragraph
+ *        转换成TeXmacs section标题
+ *        与inline pass保持相同的实现方式
  ******************************************************************************/
 bool
 apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
@@ -261,22 +240,17 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
     MD_LOG ("heading: enter tp=%s\n", MD_S (as_string (tp)));
     if (is_nil (tp)) return false;
 
-    /* Locate the paragraph the cursor is inside (CONCAT or single atom) —
-       exactly like the inline pass. */
-    path parent_p;
-    tree* pp = search_concat_parent (et, tp, parent_p);
-    MD_LOG ("heading: search_concat_parent -> %s (pp=%p)\n",
-            parent_p == path () ? "NOT FOUND" : MD_S (as_string (parent_p)),
-            (void*) pp);
-    if (pp == NULL) return false;
-    tree& para = *pp;
+    /* 找到光标所在的原子节点 */
+    path atom_p;
+    if (!find_cursor_atomic (et, tp, atom_p)) return false;
+    
+    tree& atomic_node = subtree (et, atom_p);
 
-    /* Only plain-text paragraphs; don't clobber existing structure. */
-    if (has_formatting (para)) return false;
+    /* 原子节点必须是纯文本 */
+    if (has_formatting (atomic_node)) return false;
 
-    /* Collect text and locate a leading "#… " marker. */
-    string text;
-    collect_text (para, text);
+    /* 收集文本 */
+    string text = as_string (atomic_node);
     MD_LOG ("heading: text=\"%s\"\n", MD_S (text));
     int n = N (text);
     int hashes = 0;
@@ -285,9 +259,9 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
     if (hashes >= n || text[hashes] != ' ') return false; // must be "# "
     int after = hashes + 1;                               // skip "# "
 
-    /* CRASH FIX: empty heading ("# " only) stays plain text.  A nullary
-       section() has no legal cursor position; converting now would crash
-       on the next keystroke.  Wait for the title text. */
+    /* CRASH FIX: empty heading ("# " only) stays plain text.
+       A nullary section() has no legal cursor position; converting now
+       would crash on the next keystroke.  Wait for the title text. */
     string rest = text (after, n);
     if (is_empty (rest)) return false;
 
@@ -297,8 +271,10 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        heading and create confusing intermediate states.  Let the inline pass
        handle it first — once formatting appears, has_formatting() keeps this
        pass away from the paragraph for good. */
-    if (rest[0] == '*' || rest[0] == '_' || rest[0] == '~' || rest[0] == '`')
-      return false;
+    if (!is_empty (rest)) {
+        int first_byte = rest[0];
+        if (first_byte == '*' || first_byte == '_' || first_byte == '~' || first_byte == '`') return false;
+    }
 
     /* Map level -> TeXmacs tag (keep in sync with markdown_import.cpp). */
     string tag;
@@ -311,21 +287,21 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
     default: tag = "subsubparagraph"; break;
     }
 
-    /* Replace the paragraph in place with the heading (arity 1: text atom).
-       parent_p is preserved, so the outer path indices stay valid.
+    /* Replace the atomic node in place with the heading (arity 1: text atom).
+       atom_p is preserved, so the outer path indices stay valid.
        ROOT-CAUSE FIX (2026-08-26): use the official assign() primitive —
        raw C++ reference assignment left the observer network (bridge, undo,
        ip_observers) out of sync and the NEXT keystroke SIGSEGV'd.  The
        bridge auto-syncs through the observer chain; do NOT typeset_invalidate
        manually anymore. */
     tree fresh = compound (tag, tree (rest));
-    assign (subtree (et, parent_p), fresh);
+    assign (atomic_node, fresh);
     /* Bail out if apply() postponed us (is_busy queue) — retry next round. */
-    if (!strong_equal (subtree (et, parent_p), fresh)) {
+    if (!strong_equal (atomic_node, fresh)) {
       MD_LOG ("heading: assign postponed by busy queue, skipping round\n");
       return false;
     }
-    out_p = parent_p;
+    out_p = atom_p;
     /* Move the cursor to the END of the heading text atom.
        CRASH FIX (2026-08-18): end(et, parent_p) on a section/subsection
        (an ENFORCING node) returns the enforcing node ITSELF (parent_p.0),
@@ -335,15 +311,14 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        [MD] log: tp jumped from 1.0.1 back to 1.0.0.14 on a section node).
        Instead descend to the last atomic leaf and position past its text
        — the same convention tree_traverse.cpp uses for text atoms.
-
-       NOTE (2026-08-21): must use the HEADING ARITY, NOT N(parent_p) —
-       parent_p is a PATH (array<int>): N() on a path returns the PATH LENGTH
+       NOTE (2026-08-21): must use N(fresh) (the tree we assigned), NOT N(parent_p)
+       — parent_p is a PATH (array<int>): N() on a path returns the PATH LENGTH
        (e.g. 2 for "1.0"), not the arity of the heading node.
        parent_p * (2-1) = 1.0.1 is OUT OF BOUNDS for section(rest) (arity 1,
        only child index 0), and subtree(et, 1.0.1) crashed with SIGSEGV
        (confirmed in the 8/21 md_debug.log).  Arity is 1, so leaf = parent_p * 0
-       = the text atom.  (2026-08-26: reads N(fresh) — the tree we assigned.) */
-    path leaf = parent_p * (N (fresh) - 1);
+       = the text atom. (2026-08-26: reads N(fresh) — the tree we assigned.) */
+    path leaf = atom_p * (N (fresh) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
     out_tp = leaf * N (as_string (subtree (et, leaf)));
