@@ -252,20 +252,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release create "${{ env.RELEASE_TAG }}" `
-            --repo ${{ github.repository }} `
-            --title "Mogan Build ${{ env.RELEASE_TAG }}" `
-            --notes "Automatic build #${{ github.run_number }}." `
-            --target ${{ github.sha }}
+          $tag = "${{ env.RELEASE_TAG }}"
+          # Skip if release already exists (Turbo Build may have already created it)
+          $existing = gh release view "$tag" --repo "${{ github.repository }}" 2>$null
+          if ($existing) {
+            Write-Host "Release $tag already exists, skipping creation"
+          } else {
+            gh release create "$tag" `
+              --repo "${{ github.repository }}" `
+              --title "Mogan Build $tag" `
+              --notes "Automatic build #${{ github.run_number }}." `
+              --target "${{ github.sha }}"
+          }
 
           $installer = Get-Item "build\xpack\stem\*.exe" | Select-Object -First 1
           if ($installer) {
-            gh release upload "${{ env.RELEASE_TAG }}" $installer.FullName --repo ${{ github.repository }}
+            gh release upload "$tag" $installer.FullName --repo "${{ github.repository }}"
           }
           if (Test-Path "mogan-turbo-portable.zip") {
-            gh release upload "${{ env.RELEASE_TAG }}" "mogan-turbo-portable.zip" --repo ${{ github.repository }}
+            gh release upload "$tag" "mogan-turbo-portable.zip" --repo "${{ github.repository }}"
           }
-          Write-Host "✅ Release created/updated"
+          Write-Host "✅ Release artifacts uploaded"
 
       # ----------------------------------------------------------------
       # 12. Save caches (each key saved separately so restore can find them)
