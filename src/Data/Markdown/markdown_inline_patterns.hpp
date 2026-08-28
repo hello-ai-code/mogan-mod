@@ -302,7 +302,7 @@ try_parse_inline_markdown_utf8 (string s) {
         }
 
         /* 2. Emphasis: *...* (single star, not followed by *) */
-        if (ptype.empty () && mdutf8::starts_with (s, ci, "*")
+        if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "*")
             && !(ci + 1 < nchar && mdutf8::starts_with (s, ci, "**"))) {
             bool vb = (ci == 0 ||
                        (!is_alpha (s[mdutf8::to_byte (s, ci) - 1]) &&
@@ -317,7 +317,7 @@ try_parse_inline_markdown_utf8 (string s) {
         }
 
         /* 3. Inline code: `…` */
-        if (ptype.empty () && mdutf8::starts_with (s, ci, "`")) {
+        if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "`")) {
             int close_ci = find_closing_marker (s, ci, "`", "`");
             if (close_ci > ci + 1) {
                 m_start_ci = ci; m_end_ci = close_ci + 1; ptype = "code";
@@ -326,7 +326,7 @@ try_parse_inline_markdown_utf8 (string s) {
         }
 
         /* 4. Image: ![alt](url) */
-        if (ptype.empty () && mdutf8::starts_with (s, ci, "![")) {
+        if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "![")) {
             int bracket_ci = -1;
             for (int i = ci + 2; i < nchar; i++) {
                 if (mdutf8::starts_with (s, i, "](")) { bracket_ci = i; break; }
@@ -344,7 +344,7 @@ try_parse_inline_markdown_utf8 (string s) {
         }
 
         /* 5. Link: [text](url) — not preceded by ! */
-        if (ptype.empty () && mdutf8::starts_with (s, ci, "[") &&
+        if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "[") &&
             !(ci > 0 && s[mdutf8::to_byte (s, ci) - 1] == '!')) {
             int bracket_ci = -1;
             for (int i = ci + 1; i < nchar; i++) {
@@ -363,7 +363,7 @@ try_parse_inline_markdown_utf8 (string s) {
         }
 
         /* 6. Strikeout: ~~…~~ */
-        if (ptype.empty () && mdutf8::starts_with (s, ci, "~~")) {
+        if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "~~")) {
             int close_ci = find_closing_marker (s, ci, "~~", "~~");
             if (close_ci > ci + 2) {
                 m_start_ci = ci; m_end_ci = close_ci + 2; ptype = "strikeout";
@@ -371,7 +371,7 @@ try_parse_inline_markdown_utf8 (string s) {
             }
         }
 
-        if (!ptype.empty ()) {
+        if (!N (ptype) == 0) {
             res.start_char = m_start_ci;
             res.end_char  = m_end_ci;
             res.pattern_type = ptype;
