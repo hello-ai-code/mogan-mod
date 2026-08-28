@@ -139,7 +139,7 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     string atomic_text = as_string (atomic_node);
     MD_LOG ("inline: atomic_text=\"%s\" len=%d\n", MD_S (atomic_text), N (atomic_text));
     
-    if (is_empty (atomic_text)) return false;
+    if (N (atomic_text) == 0) return false;
 
     // 检查是否包含完整的Markdown标记
     bool complete = is_complete_markdown_input_utf8 (atomic_text);
@@ -158,10 +158,10 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     int end_byte = 0;
     
     for (int i = 0; i < result.start_char; i++) {
-        start_byte = utf8::next_char (atomic_text, start_byte);
+        start_byte = mdutf8::next (atomic_text, start_byte);
     }
     for (int i = 0; i < result.end_char; i++) {
-        end_byte = utf8::next_char (atomic_text, end_byte);
+        end_byte = mdutf8::next (atomic_text, end_byte);
     }
     
     MD_LOG ("inline: byte positions: start=%d, end=%d, matched text=\"%s\"\n", 
@@ -177,15 +177,15 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     // 构建新的原子节点：前文 + 格式化树 + 后文
     tree new_atomic_node = tree (CONCAT);
     
-    if (!is_empty (prefix)) {
+    if (N (prefix) > 0) {
         new_atomic_node << tree (prefix);
     }
     
-    if (!is_atomic (result.converted) || !is_empty (copy (as_string (L (result.converted))))) {
+    if (!is_atomic (result.converted) || N (as_string (L (result.converted))) > 0) {
         new_atomic_node << result.converted;
     }
     
-    if (!is_empty (suffix)) {
+    if (N (suffix) > 0) {
         new_atomic_node << tree (suffix);
     }
 
@@ -213,7 +213,7 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     }
     
     // 设置光标到格式化内容之后
-    int total_prefix_chars = utf8::utf8_char_count (prefix);
+    int total_prefix_chars = mdutf8::count (prefix);
     int total_chars_to_move = total_prefix_chars + formatted_length;
     
     // 构建光标路径
@@ -263,7 +263,7 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        A nullary section() has no legal cursor position; converting now
        would crash on the next keystroke.  Wait for the title text. */
     string rest = text (after, n);
-    if (is_empty (rest)) return false;
+    if (N (rest) == 0) return false;
 
     /* DEFER (2026-08-26): if the text right after "# " starts with an inline
        Markdown marker, the user is typing something like "# **bold**", not a
@@ -271,7 +271,7 @@ apply_markdown_heading_conversion (tree& et, path tp, path& out_p,
        heading and create confusing intermediate states.  Let the inline pass
        handle it first — once formatting appears, has_formatting() keeps this
        pass away from the paragraph for good. */
-    if (!is_empty (rest)) {
+    if (!N (rest) == 0) {
         int first_byte = rest[0];
         if (first_byte == '*' || first_byte == '_' || first_byte == '~' || first_byte == '`') return false;
     }

@@ -96,6 +96,11 @@ find_closing_marker (string s, int start_ci, const char* opener,
     return -1;
 }
 
+/* ASCII alpha check (for Markdown emphasis boundary) */
+static inline bool is_alpha (char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
 /* Extract content between markers, stripping backslash escapes (UTF-8 safe). */
 static string
 unescape_slice (string s, int start_ci, int end_ci) {
@@ -122,14 +127,14 @@ unescape_slice (string s, int start_ci, int end_ci) {
 static tree
 parse_strong (string s, int m_ci0, int m_ci1) {
     string content = unescape_slice (s, m_ci0 + 2, m_ci1 - 2);
-    if (is_empty (content)) return tree ("");
+    if (N (content) == 0) return tree ("");
     return compound ("strong", tree (content));
 }
 
 static tree
 parse_emphasis (string s, int m_ci0, int m_ci1) {
     string content = unescape_slice (s, m_ci0 + 1, m_ci1 - 1);
-    if (is_empty (content)) return tree ("");
+    if (N (content) == 0) return tree ("");
     return compound ("em", tree (content));
 }
 
@@ -141,7 +146,7 @@ parse_inline_code (string s, int m_ci0, int m_ci1) {
 static tree
 parse_strikeout (string s, int m_ci0, int m_ci1) {
     string content = unescape_slice (s, m_ci0 + 2, m_ci1 - 2);
-    if (is_empty (content)) return tree ("");
+    if (N (content) == 0) return tree ("");
     return compound ("strikeout", tree (content));
 }
 
@@ -157,7 +162,7 @@ parse_link (string s, int m_ci0, int m_ci1) {
 
     string txt = mdutf8::substr (s, m_ci0 + 1, bracket_ci);
     string url = mdutf8::substr (s, bracket_ci + 2, m_ci1 - 1);
-    if (is_empty (txt) || is_empty (url))
+    if (N (txt) == 0 || N (url) == 0)
         return tree (mdutf8::substr (s, m_ci0, m_ci1));
     return compound ("hlink", tree (txt), tree (url));
 }
@@ -172,7 +177,7 @@ parse_image (string s, int m_ci0, int m_ci1) {
     if (bracket_ci < 0) return tree (mdutf8::substr (s, m_ci0, m_ci1));
     string alt = mdutf8::substr (s, m_ci0 + 2, bracket_ci);
     string url = mdutf8::substr (s, bracket_ci + 2, m_ci1 - 1);
-    if (is_empty (url))
+    if (N (url) == 0)
         return tree (mdutf8::substr (s, m_ci0, m_ci1));
     return compound ("image", tree (""), tree (url), tree (alt));
 }
@@ -276,7 +281,7 @@ static md_local_match
 try_parse_inline_markdown_utf8 (string s) {
     md_local_match res;
     res.valid = false;
-    if (is_empty (s)) return res;
+    if (N (s) == 0) return res;
 
     int nchar = mdutf8::count (s);
     int ci = 0;
