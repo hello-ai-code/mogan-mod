@@ -53,58 +53,28 @@ collect_text (tree t, string& out) {
 
 /******************************************************************************
  * 找到光标所在的原子节点
- * 
+ *
  * Mogan存储文本的方式：
  *   - 单个文字/原子直接存储在CONCAT中
  *   - 持续输入会形成嵌套CONCAT(原子1, 原子2, ...)
- * 光标路径(tp)指向光标所在的具体位置，我们需要找到包含光标的原子节点
+ * 光标路径(tp)指向光标所在的具体位置（可能是字符偏移，如 1.0.0.5），
+ * 我们需要向上遍历找到包含光标的原子节点
  ******************************************************************************/
 static bool
 find_cursor_atomic (tree& et, path tp, path& atom_p) {
     MD_LOG ("  find_cursor_atomic: tp=%s\n", MD_S (as_string (tp)));
     path p = tp;
-    
-    // 如果tp已经是原子（光标在原子内部），直接返回
-    if (!is_nil (p) && has_subtree (et, p) && is_atomic (subtree (et, p))) {
-        atom_p = p;
-        MD_LOG ("  find_cursor_atomic: tp already on atomic node: %s\n", MD_S (as_string (p)));
-        return true;
-    }
-    
-    // 否则向上查找，直到找到原子节点
+
+    // 向上遍历，直到找到原子节点或到达根
     while (!is_nil (p)) {
-        path_up (p);
-        if (is_nil (p) || !has_subtree (et, p)) {
-            break;
-        }
-        
-        tree* node = &subtree (et, p);
-        if (is_atomic (*node)) {
+        if (has_subtree (et, p) && is_atomic (subtree (et, p))) {
             atom_p = p;
             MD_LOG ("  find_cursor_atomic: found atomic node at path: %s\n", MD_S (as_string (p)));
             return true;
         }
-        
-        // 向下查找子节点
-        int n = N (*node);
-        for (int i = 0; i < n; i++) {
-            path child = p * i;
-            if (has_subtree (et, child) && has_subtree (et, child * N (subtree (et, child)))) {
-                // 检查子节点是否是原子且包含光标
-                path child_char = child * N (subtree (et, child));
-                if (has_subtree (et, child_char)) {
-                    // 递归检查子节点
-                    path child_atom;
-                    if (find_cursor_atomic (et, child_char, child_atom)) {
-                        atom_p = child_atom;
-                        MD_LOG ("  find_cursor_atomic: found atomic in child: %s\n", MD_S (as_string (child_atom)));
-                        return true;
-                    }
-                }
-            }
-        }
+        path_up (p);
     }
-    
+
     MD_LOG ("  find_cursor_atomic: no atomic node found for tp=%s\n", MD_S (as_string (tp)));
     return false;
 }
