@@ -72,7 +72,7 @@ find_cursor_atomic (tree& et, path tp, path& atom_p) {
             MD_LOG ("  find_cursor_atomic: found atomic node at path: %s\n", MD_S (as_string (p)));
             return true;
         }
-        path_up (p);
+        p = path_up (p);
     }
 
     MD_LOG ("  find_cursor_atomic: no atomic node found for tp=%s\n", MD_S (as_string (tp)));
