@@ -166,36 +166,22 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
 
     // 设置输出路径：光标位置在格式化内容之后
     out_p = atom_p;
-    
-    // 找到格式化树在CONCAT中的位置（第一个兄弟节点后）
-    int format_index = (N (new_atomic_node) >= 3) ? 1 : 0;
-    
-    // 找到格式化节点的字节长度
-    tree& formatted = new_atomic_node[format_index];
-    int formatted_length = 0;
-    
-    if (!is_atomic (formatted)) {
-        for (int i = 0; i < N (formatted); i++) {
-            formatted_length += N (as_string (formatted[i]));
-        }
-    } else {
-        formatted_length = N (as_string (formatted));
-    }
-    
-    // 设置光标到格式化内容之后
-    int total_prefix_chars = mdutf8::count (prefix);
-    int total_chars_to_move = total_prefix_chars + formatted_length;
-    
-    // 构建光标路径
-    path new_tp = atom_p;
-    if (total_chars_to_move > 0) {
-        new_tp = atom_p * total_chars_to_move;
-    }
-    
-    out_tp = new_tp;
-    MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s prefix_len=%d format_len=%d total_move=%d\n",
-            MD_S (as_string (out_p)), MD_S (as_string (out_tp)), total_prefix_chars, formatted_length, total_chars_to_move);
-    
+
+    /* CRASH/NAVIGATION FIX (2026-08-29): previously the cursor was computed
+       as atom_p * total_chars_to_move, i.e. the NUMBER OF CHARS was used as
+       the CONCAT CHILD INDEX.  After conversion atom_p holds a CONCAT like
+       CONCAT(strong("bold")) whose arity is 1, so a path like 1.0.0.8 is
+       OUT OF BOUNDS — the next Enter/arrow used an illegal path and the
+       cursor could not move (Enter produced no newline).  Instead descend to
+       the LAST LEAF atom of the converted CONCAT and place the cursor past
+       its text, exactly like the heading pass does. */
+    path leaf = atom_p * (N (new_atomic_node) - 1);
+    while (!is_atomic (subtree (et, leaf)))
+        leaf = leaf * (N (subtree (et, leaf)) - 1);
+    out_tp = leaf * N (as_string (subtree (et, leaf)));
+    MD_LOG ("inline: CONVERTED -> out_p=%s out_tp=%s new_arity=%d\n",
+            MD_S (as_string (out_p)), MD_S (as_string (out_tp)),
+            N (new_atomic_node));
     return true;
 }
 

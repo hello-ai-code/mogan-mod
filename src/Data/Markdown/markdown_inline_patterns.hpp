@@ -304,9 +304,12 @@ try_parse_inline_markdown_utf8 (string s) {
         /* 2. Emphasis: *...* (single star, not followed by *) */
         if (N (ptype) == 0 && mdutf8::starts_with (s, ci, "*")
             && !(ci + 1 < nchar && mdutf8::starts_with (s, ci, "**"))) {
-            bool vb = (ci == 0 ||
-                       (!is_alpha (s[mdutf8::to_byte (s, ci) - 1]) &&
-                        s[mdutf8::to_byte (s, ci) - 1] != '_'));
+            /* Transparent-input leniency: allow the star to follow ANY char
+               (letters, CJK, digits).  CommonMark requires a word-boundary
+               (space/start) before the opening star, but that forces users
+               to type "abc *italic*" — annoying in WYSIWYG input.  The only
+               hard exclusion is '_' to avoid mangling identifiers. */
+            bool vb = (ci == 0 || s[mdutf8::to_byte (s, ci) - 1] != '_');
             if (vb) {
                 int close_ci = find_closing_marker (s, ci, "*", "*");
                 if (close_ci > ci + 1) {
