@@ -157,6 +157,16 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
     
     if (N (suffix) > 0) {
         new_atomic_node << tree (suffix);
+    } else {
+        /* CURSOR ESCAPE FIX (2026-08-30): when the matched pattern reaches
+           the END of the atomic text (the common "**bold**" case), the
+           converted CONCAT ends with the formatting node itself, e.g.
+           CONCAT(strong("bold")).  Placing the cursor at the last leaf
+           ("bold") left it INSIDE the strong node, so the next keystroke
+           kept typing bold/italic.  Append a TRAILING EMPTY ATOM as an
+           escape zone: the cursor rests at position 0 of "" which is
+           outside any formatting node, so following input is plain text. */
+        new_atomic_node << tree ("");
     }
 
     // 使用assign替换原子节点（保持observer网络完整）
@@ -174,7 +184,9 @@ apply_markdown_inline_conversion (tree& et, path tp, path& out_p,
        OUT OF BOUNDS — the next Enter/arrow used an illegal path and the
        cursor could not move (Enter produced no newline).  Instead descend to
        the LAST LEAF atom of the converted CONCAT and place the cursor past
-       its text, exactly like the heading pass does. */
+       its text, exactly like the heading pass does.  With the trailing empty
+       atom (see above) that last leaf is the escape zone "", so the cursor
+       is past the formatting node — typing continues as plain text. */
     path leaf = atom_p * (N (new_atomic_node) - 1);
     while (!is_atomic (subtree (et, leaf)))
         leaf = leaf * (N (subtree (et, leaf)) - 1);
